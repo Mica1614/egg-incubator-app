@@ -8,6 +8,12 @@ import {
   Menu,
   Shield,
   Trash2,
+  Droplet,
+  Droplets,
+  RotateCcw,
+  Wind,
+  CloudRain,
+  Thermometer,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -182,6 +188,29 @@ export default function TopBar({
     return "info";
   };
 
+  const getIconComponent = (iconName) => {
+    const iconMap = {
+      Droplet,
+      Droplets,
+      RotateCcw,
+      Wind,
+      CloudRain,
+      Thermometer,
+      Bell,
+    };
+    return iconMap[iconName] || Bell;
+  };
+
+  const getIconColor = (tone) => {
+    const toneMap = {
+      warning: "text-rose-500",
+      success: "text-emerald-500",
+      info: "text-sky-500",
+      danger: "text-rose-500",
+    };
+    return toneMap[tone] || "text-slate-500";
+  };
+
   const markAllAsRead = async () => {
     if (overrideActive) return;
     if (!uid) return;
@@ -300,12 +329,9 @@ export default function TopBar({
                 ) : (
                   <div className="max-h-[420px] overflow-auto sm:max-h-[420px]">
                     {dropdownNotifications.map((item) => {
-                      const tone = toneForNotification(item);
-                      const isDanger = tone === "danger";
-
-                      const iconBg = isDanger
-                        ? "bg-rose-600"
-                        : "bg-[#0b4f78]";
+                      const IconComponent = getIconComponent(item?.icon);
+                      const iconColor = getIconColor(item?.tone);
+                      const isRead = Boolean(item?.read);
 
                       const titleText =
                         item?.title ||
@@ -319,33 +345,36 @@ export default function TopBar({
                       return (
                         <div
                           key={item.id}
-                          className="flex items-start gap-4 border-b border-slate-200 px-5 py-4"
+                          className={`flex items-start gap-3 border-b border-slate-200 px-5 py-4 transition ${
+                            isRead
+                              ? "bg-white opacity-60 hover:opacity-80"
+                              : "bg-sky-50/30 hover:bg-sky-50/60"
+                          }`}
                         >
-                          <div
-                            className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full text-white ${iconBg}`}
-                          >
-                            {isDanger ? (
-                              <Shield className="h-5 w-5" />
-                            ) : (
-                              <LogIn className="h-5 w-5" />
-                            )}
+                          <div className={`shrink-0 pt-0.5 ${iconColor}`}>
+                            <IconComponent className="h-5 w-5" />
                           </div>
 
-                          <div className="flex-1">
-                            <p
-                              className={`text-sm font-semibold leading-snug text-slate-900 ${
-                                item?.read ? "opacity-80" : ""
-                              }`}
-                            >
-                              {titleText}
-                            </p>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <p
+                                className={`text-sm font-semibold leading-snug text-slate-900 ${
+                                  isRead ? "font-normal" : "font-semibold"
+                                }`}
+                              >
+                                {titleText}
+                              </p>
+                              {!isRead && (
+                                <div className="h-2 w-2 shrink-0 rounded-full bg-sky-500 mt-2" />
+                              )}
+                            </div>
                             {messageText ? (
                               <p className="mt-1 whitespace-pre-line text-[11px] leading-relaxed text-slate-600">
                                 {String(messageText)}
                               </p>
                             ) : null}
                             {timestamp ? (
-                              <p className="mt-1 text-[11px] text-slate-500">
+                              <p className="mt-1 text-[10px] text-slate-400">
                                 {timestamp}
                               </p>
                             ) : null}
@@ -354,7 +383,7 @@ export default function TopBar({
                           <button
                             type="button"
                             onClick={() => deleteNotification(item.id)}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-2xl text-slate-400 transition hover:bg-slate-50 hover:text-slate-600"
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-300 transition hover:bg-slate-200 hover:text-slate-600"
                             aria-label="Delete notification"
                             title="Delete"
                           >
