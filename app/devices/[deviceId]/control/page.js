@@ -63,6 +63,11 @@ export default function DeviceControlPage() {
 
   const { devices, loading, setActuator, setBulkActuator } = useIncubatorDevices(authorized ? [deviceId] : []);
   const live = devices[deviceId] || {};
+  
+  // Check if device is stale (hasn't updated in 45+ seconds)
+  const lastSeenMs = typeof live?.lastSeen === "number" ? live.lastSeen : 0;
+  const isStale = lastSeenMs === 0 || (Date.now() - lastSeenMs) > 45000;
+  const isOnline = live?.mode === "online" && !isStale;
 
   // Sync threshold form from live device values (skip if user is actively saving)
   useEffect(() => {
@@ -208,9 +213,9 @@ export default function DeviceControlPage() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <h1 className="text-base font-bold tracking-tight text-slate-900">System Controls</h1>
               <div className="flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs shadow-sm ring-1 ring-slate-100">
-                <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wider ring-1 ${live?.mode === "online" ? "bg-emerald-50 text-emerald-600 ring-emerald-100" : "bg-slate-100 text-slate-400 ring-slate-200"}`}>
-                  <span className={`h-1.5 w-1.5 rounded-full ${live?.mode === "online" ? "bg-emerald-500" : "bg-slate-300"}`} />
-                  {live?.mode === "online" ? "Online" : "Offline"}
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wider ring-1 ${isOnline ? "bg-emerald-50 text-emerald-600 ring-emerald-100" : "bg-slate-100 text-slate-400 ring-slate-200"}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${isOnline ? "bg-emerald-500" : "bg-slate-300"}`} />
+                  {isOnline ? "Online" : "Offline"}
                 </span>
                 <Radio className="h-3.5 w-3.5 text-slate-400" />
               </div>

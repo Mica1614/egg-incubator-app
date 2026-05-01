@@ -137,7 +137,11 @@ export default function DashboardPage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {ownedDevices.map((owned) => {
                 const live = liveDevices[owned.id] || {};
-                const isOnline = live?.mode === "online";
+                // Check if device is stale (hasn't updated in 45+ seconds)
+                const lastSeenMs = typeof live?.lastSeen === "number" ? live.lastSeen : 0;
+                const now = Date.now();
+                const isStale = lastSeenMs === 0 || (now - lastSeenMs) > 45000;
+                const isOnline = live?.mode === "online" && !isStale;
                 const tempValid = typeof live?.tempC === "number" && live.tempC !== -999;
                 const humValid = typeof live?.humidity === "number" && live.humidity !== -999;
 
