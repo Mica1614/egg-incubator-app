@@ -10,10 +10,12 @@ import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 import Link from "next/link";
 import { ChevronLeft, Save, Loader2, AlertTriangle } from "lucide-react";
+import NotificationToggle from "@/components/NotificationToggle";
 
 const DEFAULT_CONFIG = {
   thresholds: { idealTemperatureC: 37.5, idealHumidityPct: 60, minTemperatureC: 36, maxTemperatureC: 39 },
   alerts: { temperatureAlert: true, humidityAlert: true, waterLevelAlert: true },
+  notificationsEnabled: true,
 };
 
 export default function DeviceSettingsPage() {
@@ -182,6 +184,16 @@ export default function DeviceSettingsPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* Notifications */}
+              <div className="rounded-2xl bg-white px-6 py-5 shadow-sm ring-1 ring-slate-100">
+                <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Notifications</h2>
+                <NotificationToggle 
+                  enabled={Boolean(config.notificationsEnabled)}
+                  onChange={(enabled) => setConfig((p) => ({ ...p, notificationsEnabled: enabled }))}
+                  loading={false}
+                />
               </div>
 
               {/* Device ID info */}

@@ -1,8 +1,23 @@
 // @ts-nocheck
 "use client";
 
-import { Bell, BellOff } from "lucide-react";
+import { Bell, BellOff, Droplet, RotateCcw, Wind, CloudRain, Thermometer, Zap } from "lucide-react";
 import { NOTIFICATION_TYPES } from "@/lib/notificationService";
+
+const iconMap = {
+  [NOTIFICATION_TYPES.WATER_LOW]: Droplet,
+  [NOTIFICATION_TYPES.WATER_OK]: Droplet,
+  [NOTIFICATION_TYPES.EGG_TURNER_ON]: RotateCcw,
+  [NOTIFICATION_TYPES.EGG_TURNER_OFF]: RotateCcw,
+  [NOTIFICATION_TYPES.FAN_ON]: Wind,
+  [NOTIFICATION_TYPES.FAN_OFF]: Wind,
+  [NOTIFICATION_TYPES.HUMIDIFIER_ON]: CloudRain,
+  [NOTIFICATION_TYPES.HUMIDIFIER_OFF]: CloudRain,
+  [NOTIFICATION_TYPES.TEMP_ABNORMAL]: Thermometer,
+  [NOTIFICATION_TYPES.TEMP_NORMAL]: Thermometer,
+  [NOTIFICATION_TYPES.HUMIDITY_ABNORMAL]: CloudRain,
+  [NOTIFICATION_TYPES.HUMIDITY_NORMAL]: CloudRain,
+};
 
 /**
  * Notification settings UI component
@@ -13,38 +28,38 @@ export default function NotificationSettings({ preferences, onToggle, loading })
     {
       label: "Device Status",
       items: [
-        { type: NOTIFICATION_TYPES.WATER_LOW, label: "🌊 Water Level Low" },
-        { type: NOTIFICATION_TYPES.WATER_OK, label: "✓ Water Level Normal" },
+        { type: NOTIFICATION_TYPES.WATER_LOW, label: "Water Level Low" },
+        { type: NOTIFICATION_TYPES.WATER_OK, label: "Water Level Normal" },
       ],
     },
     {
       label: "Egg Turner",
       items: [
-        { type: NOTIFICATION_TYPES.EGG_TURNER_ON, label: "🔄 Turner Started" },
-        { type: NOTIFICATION_TYPES.EGG_TURNER_OFF, label: "⏹ Turner Stopped" },
+        { type: NOTIFICATION_TYPES.EGG_TURNER_ON, label: "Turner Started" },
+        { type: NOTIFICATION_TYPES.EGG_TURNER_OFF, label: "Turner Stopped" },
       ],
     },
     {
       label: "Fan",
       items: [
-        { type: NOTIFICATION_TYPES.FAN_ON, label: "💨 Fan Started" },
-        { type: NOTIFICATION_TYPES.FAN_OFF, label: "⏹ Fan Stopped" },
+        { type: NOTIFICATION_TYPES.FAN_ON, label: "Fan Started" },
+        { type: NOTIFICATION_TYPES.FAN_OFF, label: "Fan Stopped" },
       ],
     },
     {
       label: "Humidifier",
       items: [
-        { type: NOTIFICATION_TYPES.HUMIDIFIER_ON, label: "💧 Humidifier Started" },
-        { type: NOTIFICATION_TYPES.HUMIDIFIER_OFF, label: "⏹ Humidifier Stopped" },
+        { type: NOTIFICATION_TYPES.HUMIDIFIER_ON, label: "Humidifier Started" },
+        { type: NOTIFICATION_TYPES.HUMIDIFIER_OFF, label: "Humidifier Stopped" },
       ],
     },
     {
       label: "Environmental Alerts",
       items: [
-        { type: NOTIFICATION_TYPES.TEMP_ABNORMAL, label: "🌡 Temperature Warning" },
-        { type: NOTIFICATION_TYPES.TEMP_NORMAL, label: "✓ Temperature Normal" },
-        { type: NOTIFICATION_TYPES.HUMIDITY_ABNORMAL, label: "💧 Humidity Warning" },
-        { type: NOTIFICATION_TYPES.HUMIDITY_NORMAL, label: "✓ Humidity Normal" },
+        { type: NOTIFICATION_TYPES.TEMP_ABNORMAL, label: "Temperature Warning" },
+        { type: NOTIFICATION_TYPES.TEMP_NORMAL, label: "Temperature Normal" },
+        { type: NOTIFICATION_TYPES.HUMIDITY_ABNORMAL, label: "Humidity Warning" },
+        { type: NOTIFICATION_TYPES.HUMIDITY_NORMAL, label: "Humidity Normal" },
       ],
     },
   ];
@@ -66,12 +81,16 @@ export default function NotificationSettings({ preferences, onToggle, loading })
           <div className="space-y-2">
             {group.items.map((item) => {
               const isEnabled = preferences[item.type] !== false;
+              const IconComp = iconMap[item.type];
               return (
                 <div
                   key={item.type}
                   className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 transition hover:bg-slate-100"
                 >
-                  <span className="text-sm font-medium text-slate-700">{item.label}</span>
+                  <div className="flex items-center gap-3">
+                    {IconComp && <IconComp className="h-4 w-4 text-slate-500" />}
+                    <span className="text-sm font-medium text-slate-700">{item.label}</span>
+                  </div>
                   <button
                     type="button"
                     onClick={() => onToggle(item.type, !isEnabled)}
@@ -104,7 +123,7 @@ export default function NotificationSettings({ preferences, onToggle, loading })
 
       <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3">
         <p className="text-xs text-blue-700">
-          💡 <strong>Tip:</strong> Disable notifications for routine events (on/off) and keep
+          <strong>Tip:</strong> Disable notifications for routine events (on/off) and keep
           warnings enabled for abnormal conditions.
         </p>
       </div>

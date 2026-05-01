@@ -9,7 +9,6 @@ import { auth, firestore } from "@/lib/firebase";
 import { useIncubatorDevices } from "@/lib/useIncubatorDevices";
 import { useDeviceNotifications } from "@/lib/useDeviceNotifications";
 import { useNotificationPreferences } from "@/lib/useNotificationPreferences";
-import NotificationSettings from "@/components/NotificationSettings";
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 import Link from "next/link";
@@ -76,11 +75,13 @@ export default function DeviceControlPage() {
   
   // Load notification preferences and enable automatic notifications
   const { preferences: notificationPrefs } = useNotificationPreferences(user?.uid, deviceId);
+  const prefs = notificationPrefs || {};
+  
   useDeviceNotifications(
     nickname || deviceId,
     live,
-    notificationPrefs,
-    authorized === true // only enable if page is authorized
+    prefs,
+    authorized === true && Object.keys(prefs).length > 0 // only enable if page is authorized and prefs are loaded
   );
   
   // Check if device is stale (hasn't updated in 45+ seconds)
@@ -377,23 +378,6 @@ export default function DeviceControlPage() {
                 );
               })}
             </div>
-          </div>
-
-          {/* ── Notification Settings ── */}
-          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-4 text-sm font-semibold text-slate-900">Notification Alerts</h2>
-            {notificationPrefs ? (
-              <NotificationSettings 
-                preferences={notificationPrefs}
-                onToggle={(type, enabled) => {
-                  // This would require adding the updatePreference function from the hook
-                  // For now, the hook handles preferences read-only through the control page
-                }}
-                loading={false}
-              />
-            ) : (
-              <div className="text-xs text-slate-500">Loading notification preferences...</div>
-            )}
           </div>
         </main>
       </div>
