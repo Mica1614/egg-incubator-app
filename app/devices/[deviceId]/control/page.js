@@ -205,7 +205,7 @@ export default function DeviceControlPage() {
               <ChevronLeft className="h-3 w-3" />
               {nickname || deviceId}
             </Link>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <h1 className="text-base font-bold tracking-tight text-slate-900">System Controls</h1>
               <div className="flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs shadow-sm ring-1 ring-slate-100">
                 <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wider ring-1 ${live?.mode === "online" ? "bg-emerald-50 text-emerald-600 ring-emerald-100" : "bg-slate-100 text-slate-400 ring-slate-200"}`}>
@@ -230,7 +230,7 @@ export default function DeviceControlPage() {
           {/* ── Auto Modes & Schedule Settings (combined) ── */}
           <div className="rounded-2xl bg-white px-5 py-4 shadow-sm ring-1 ring-slate-100">
             <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Auto Modes &amp; Schedule Settings</h2>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {[
                 {
                   mode: "bulbAutoMode", label: "Heater Auto Mode", sub: "Auto on/off by temperature",
@@ -280,13 +280,13 @@ export default function DeviceControlPage() {
                     </div>
                     <div className="mt-2 flex flex-col gap-1.5 border-t border-slate-200 pt-2">
                       {fields.map(({ key, label: flabel, step, min, max, unit }) => (
-                        <div key={key} className="flex items-center gap-1.5">
-                          <label className="w-24 shrink-0 text-[11px] text-slate-500">{flabel}</label>
+                        <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-1.5">
+                          <label className="w-full sm:w-24 shrink-0 text-[11px] text-slate-500">{flabel}</label>
                           <input
                             type="number" step={step} min={min} max={max}
                             value={thresholds[key]}
                             onChange={(e) => setThresholds((p) => ({ ...p, [key]: e.target.value }))}
-                            className="w-16 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400"
+                            className="flex-1 sm:w-16 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400"
                           />
                           <span className="text-[10px] text-slate-400">{unit}</span>
                         </div>
@@ -314,7 +314,7 @@ export default function DeviceControlPage() {
           {/* ── Manual Controls (2-column grid) ── */}
           <div>
             <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Manual Controls</h2>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {MANUAL_CONTROLS.map((ctrl) => {
                 const isOn = Boolean(getActuatorState(ctrl.stateKey));
                 const isPending = pendingKey === ctrl.key;
