@@ -68,6 +68,32 @@ const ACTUATOR_META = {
   eggTurner:   { label: "Egg Turner", Icon: RotateCcw, on: "text-emerald-600 bg-emerald-50", off: "text-slate-500 bg-slate-100" },
 };
 
+function Pagination({ page, setPage, total, perPage }) {
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3">
+      <span className="text-[11px] text-slate-400">
+        {Math.min((page - 1) * perPage + 1, total)}&ndash;{Math.min(page * perPage, total)} of {total}
+      </span>
+      <div className="flex gap-1">
+        <button
+          type="button"
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          disabled={page === 1}
+          className="rounded-lg px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-100 disabled:opacity-40"
+        >&lsaquo; Prev</button>
+        <button
+          type="button"
+          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          disabled={page === totalPages}
+          className="rounded-lg px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-100 disabled:opacity-40"
+        >Next &rsaquo;</button>
+      </div>
+    </div>
+  );
+}
+
 function formatTs(ts) {
   if (!ts) return "—";
   const d = ts?.toDate ? ts.toDate() : new Date(ts);
@@ -157,6 +183,9 @@ export default function DeviceHistoryPage() {
 
   const [sensorRows, setSensorRows] = useState([]);
   const [activityRows, setActivityRows] = useState([]);
+  const [sensorPage, setSensorPage] = useState(1);
+  const [activityPage, setActivityPage] = useState(1);
+  const ROWS_PER_PAGE = 20;
 
   // Auth guard
   useEffect(() => {
@@ -195,6 +224,8 @@ export default function DeviceHistoryPage() {
 
       setSensorRows(sSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
       setActivityRows(aSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setSensorPage(1);
+      setActivityPage(1);
     } catch (e) {
       console.error("[HistoryPage] fetch failed:", e);
     } finally {
@@ -433,6 +464,7 @@ export default function DeviceHistoryPage() {
             ) : sensorRows.length === 0 ? (
               <p className="px-5 py-10 text-center text-xs text-slate-400">No sensor readings for this range.</p>
             ) : (
+              <div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
@@ -444,7 +476,7 @@ export default function DeviceHistoryPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {[...sensorRows].reverse().map((r) => (
+                    {[...sensorRows].reverse().slice((sensorPage - 1) * ROWS_PER_PAGE, sensorPage * ROWS_PER_PAGE).map((r) => (
                       <tr key={r.id} className="hover:bg-slate-50/60 transition">
                         <td className="px-5 py-2.5 text-slate-500 whitespace-nowrap">{formatTs(r.createdAt)}</td>
                         <td className="px-5 py-2.5 font-medium text-rose-600">
@@ -465,6 +497,8 @@ export default function DeviceHistoryPage() {
                   </tbody>
                 </table>
               </div>
+              <Pagination page={sensorPage} setPage={setSensorPage} total={sensorRows.length} perPage={ROWS_PER_PAGE} />
+              </div>
             )}
           </div>
 
@@ -484,6 +518,7 @@ export default function DeviceHistoryPage() {
             ) : activityRows.length === 0 ? (
               <p className="px-5 py-10 text-center text-xs text-slate-400">No actuator events for this range.</p>
             ) : (
+              <div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
@@ -494,7 +529,7 @@ export default function DeviceHistoryPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {activityRows.map((r) => {
+                    {activityRows.slice((activityPage - 1) * ROWS_PER_PAGE, activityPage * ROWS_PER_PAGE).map((r) => {
                       const meta = ACTUATOR_META[r.actuator];
                       const Icon = meta?.Icon ?? Wind;
                       const colorClass = r.state
@@ -523,6 +558,8 @@ export default function DeviceHistoryPage() {
                     })}
                   </tbody>
                 </table>
+              </div>
+              <Pagination page={activityPage} setPage={setActivityPage} total={activityRows.length} perPage={ROWS_PER_PAGE} />
               </div>
             )}
           </div>

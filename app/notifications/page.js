@@ -30,6 +30,8 @@ import {
   Bell,
   BellOff,
   Heater,
+  WifiOff,
+  Wifi,
 } from "lucide-react";
 export default function NotificationsPage() {
   const [uid, setUid] = useState(null);
@@ -119,6 +121,8 @@ export default function NotificationsPage() {
       CloudRain,
       Thermometer,
       Heater,
+      WifiOff,
+      Wifi,
       Flame: Heater, // legacy alias
       Zap: Heater, // legacy alias for old Firestore records
       Bell,
@@ -144,6 +148,24 @@ export default function NotificationsPage() {
       await batch.commit();
     } catch (e) {
       console.error("Failed to mark all notifications as read:", e);
+    }
+  };
+
+  const clearAllNotifications = async () => {
+    if (!uid || notifications.length === 0) return;
+    try {
+      // Firestore batch limit is 500 — chunk if needed
+      const ids = notifications.map((n) => n.id);
+      const CHUNK = 400;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const batch = writeBatch(firestore);
+        ids.slice(i, i + CHUNK).forEach((id) => {
+          batch.delete(doc(firestore, "users", uid, "notifications", id));
+        });
+        await batch.commit();
+      }
+    } catch (e) {
+      console.error("Failed to clear all notifications:", e);
     }
   };
 
@@ -190,6 +212,15 @@ export default function NotificationsPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={clearAllNotifications}
+                  disabled={!uid || notifications.length === 0}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-rose-50 px-4 py-2.5 text-xs font-semibold text-rose-600 shadow-sm ring-1 ring-rose-200 transition hover:bg-rose-100 disabled:opacity-40"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Clear all
+                </button>
+                <button
+                  type="button"
                   onClick={toggleMute}
                   className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-semibold shadow-sm transition ${
                     isMuted
@@ -224,7 +255,7 @@ export default function NotificationsPage() {
                 <p className="mt-1 text-[11px] text-slate-400">You’re all caught up.</p>
               </div>
             ) : (
-              <div className="mt-5 overflow-hidden rounded-2xl ring-1 ring-slate-200">
+              <div className="mt-5 max-h-[600px] overflow-y-auto rounded-2xl ring-1 ring-slate-200">
                 {notifications.map((item) => {
                   const IconComponent = getIconComponent(item?.icon);
                   const iconColor = item?.iconColor || "text-slate-500";

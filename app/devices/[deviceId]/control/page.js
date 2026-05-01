@@ -14,7 +14,7 @@ import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 import Link from "next/link";
 import { DotLottieReact } from "@lottiefiles/dotlottie-react";
-import { ChevronLeft, Loader2, Radio, AlertTriangle } from "lucide-react";
+import { ChevronLeft, Loader2, Radio, AlertTriangle, WifiOff } from "lucide-react";
 
 const MANUAL_CONTROLS = [
   { key: "heater",     esp32Key: "heaterBulb", stateKey: "heaterBulb", title: "Heater",  subtitle: "Incubation target: 37.5°C", tone: "rose",   lottieSrc: "https://lottie.host/a326d1d6-8a59-41a0-a096-b51612d776a7/zpWIYNjsIK.lottie" },
@@ -114,7 +114,11 @@ export default function DeviceControlPage() {
 
   // Helper: return local auto-mode edit state or live RTDB value
   const getMode = (key) => autoModes?.[key] ?? Boolean(live?.[key]);
-  const getActuatorState = (stateKey) => stateKey in optimisticActuators ? optimisticActuators[stateKey] : live?.[stateKey];
+  // When offline, report all actuators as OFF so UI reflects physical safety state
+  const getActuatorState = (stateKey) => {
+    if (!isOnline) return false;
+    return stateKey in optimisticActuators ? optimisticActuators[stateKey] : live?.[stateKey];
+  };
 
   useEffect(() => {
     if (autoModes !== null) return;
@@ -150,6 +154,7 @@ export default function DeviceControlPage() {
   }, [live]);
 
   const toggle = async (ctrl) => {
+    if (!isOnline) return; // block all commands when offline
     const currentVal = Boolean(getActuatorState(ctrl.stateKey));
     const next = !currentVal;
     setError("");
@@ -170,26 +175,30 @@ export default function DeviceControlPage() {
   };
 
   const saveThresholds = async () => {
+    if (!isOnline) return; // block all commands when offline
     setThresholdsPending(true);
     setThresholdsSuccess(false);
     setError("");
     try {
+      // Safe parsers: if the input is empty or invalid, fall back to the live value so the
+      // ESP32 never receives NaN (Firebase stores NaN as null → ESP32 reads 0 → thresholds break).
+      const safeFloat = (val, fallback) => { const n = parseFloat(val); return Number.isFinite(n) ? n : fallback; };
+      const safeInt   = (val, fallback) => { const n = parseInt(val, 10);  return Number.isFinite(n) ? n : fallback; };
+
       // Send all fields in ONE command so the ESP32 processes them together.
-      // Sending them individually overwrites the command path each time, causing
-      // all but the last field to be silently dropped.
       const payload = {
         bulbAutoMode:             Boolean(autoModes?.bulbAutoMode),
         humidifierAutoMode:       Boolean(autoModes?.humidifierAutoMode),
         fanScheduleEnabled:       Boolean(autoModes?.fanScheduleEnabled),
         eggTurnerScheduleEnabled: Boolean(autoModes?.eggTurnerScheduleEnabled),
-        tempTrigger:              parseFloat(thresholds.tempTrigger),
-        tempStop:                 parseFloat(thresholds.tempStop),
-        humidityTrigger:          parseFloat(thresholds.humidityTrigger),
-        humidityStop:             parseFloat(thresholds.humidityStop),
-        fanRunDuration:           parseInt(thresholds.fanRunDuration),
-        fanIdleDuration:          parseInt(thresholds.fanIdleDuration),
-        eggTurnerRunDuration:     parseInt(thresholds.eggTurnerRunDuration),
-        eggTurnerIdleDuration:    parseInt(thresholds.eggTurnerIdleDuration),
+        tempTrigger:              safeFloat(thresholds.tempTrigger,          live.tempTrigger           ?? 37.5),
+        tempStop:                 safeFloat(thresholds.tempStop,             live.tempStop              ?? 38.0),
+        humidityTrigger:          safeFloat(thresholds.humidityTrigger,      live.humidityTrigger       ?? 60),
+        humidityStop:             safeFloat(thresholds.humidityStop,         live.humidityStop          ?? 65),
+        fanRunDuration:           safeInt(thresholds.fanRunDuration,         live.fanRunDuration        ?? 300),
+        fanIdleDuration:          safeInt(thresholds.fanIdleDuration,        live.fanIdleDuration       ?? 300),
+        eggTurnerRunDuration:     safeInt(thresholds.eggTurnerRunDuration,   live.eggTurnerRunDuration  ?? 10),
+        eggTurnerIdleDuration:    safeInt(thresholds.eggTurnerIdleDuration,  live.eggTurnerIdleDuration ?? 21600),
       };
       await setBulkActuator(deviceId, payload);
       setThresholdsSuccess(true);
@@ -251,6 +260,20 @@ export default function DeviceControlPage() {
             <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-xs text-rose-700">{error}</div>
           )}
 
+          {/* ── Offline banner ── */}
+          {!isOnline && !loading && (
+            <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3.5">
+              <WifiOff className="mt-0.5 h-4 w-4 shrink-0 text-rose-500" />
+              <div>
+                <p className="text-xs font-semibold text-rose-700">Device is offline</p>
+                <p className="text-[11px] text-rose-500 mt-0.5">
+                  All controls are disabled. All actuators have been turned off.
+                  Data recording and alerts are paused until the device reconnects.
+                </p>
+              </div>
+            </div>
+          )}
+
           {loading && (
             <div className="flex items-center gap-2 text-xs text-slate-400">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading device state…
@@ -264,6 +287,8 @@ export default function DeviceControlPage() {
               {[
                 {
                   mode: "bulbAutoMode", label: "Heater Auto Mode", sub: "Auto on/off by temperature",
+                  sensorLabel: "Current temp",
+                  sensorValue: (live.tempC !== undefined && live.tempC !== -999) ? `${Number(live.tempC).toFixed(1)} °C` : null,
                   fields: [
                     { key: "tempTrigger",  label: "Heat ON below",  step: "0.1", min: "30", max: "45", unit: "°C" },
                     { key: "tempStop",     label: "Heat OFF above", step: "0.1", min: "30", max: "45", unit: "°C" },
@@ -271,6 +296,8 @@ export default function DeviceControlPage() {
                 },
                 {
                   mode: "humidifierAutoMode", label: "Humidifier Auto Mode", sub: "Auto on/off by humidity",
+                  sensorLabel: "Current humidity",
+                  sensorValue: (live.humidity !== undefined && live.humidity !== -999) ? `${Math.round(live.humidity)} %` : null,
                   fields: [
                     { key: "humidityTrigger", label: "Humid ON below",  step: "1", min: "30", max: "90", unit: "%" },
                     { key: "humidityStop",    label: "Humid OFF above", step: "1", min: "30", max: "90", unit: "%" },
@@ -278,6 +305,7 @@ export default function DeviceControlPage() {
                 },
                 {
                   mode: "fanScheduleEnabled", label: "Fan Schedule", sub: "Timed on/off cycles",
+                  sensorLabel: null, sensorValue: null,
                   fields: [
                     { key: "fanRunDuration",  label: "Run",  step: "1", min: "10", max: "3600", unit: "sec" },
                     { key: "fanIdleDuration", label: "Idle", step: "1", min: "10", max: "3600", unit: "sec" },
@@ -285,12 +313,13 @@ export default function DeviceControlPage() {
                 },
                 {
                   mode: "eggTurnerScheduleEnabled", label: "Turner Schedule", sub: "Timed rotation cycles",
+                  sensorLabel: null, sensorValue: null,
                   fields: [
                     { key: "eggTurnerRunDuration",  label: "Run",  step: "1", min: "5",  max: "300", unit: "sec" },
                     { key: "eggTurnerIdleDuration", label: "Idle", step: "1", min: "60",             unit: "sec" },
                   ],
                 },
-              ].map(({ mode, label, sub, fields }) => {
+              ].map(({ mode, label, sub, sensorLabel, sensorValue, fields }) => {
                 const isOn = Boolean(getMode(mode));
                 return (
                   <div key={mode} className="rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100 col-span-1">
@@ -298,11 +327,14 @@ export default function DeviceControlPage() {
                       <div>
                         <p className="text-xs font-semibold text-slate-700">{label}</p>
                         <p className="text-[10px] text-slate-400">{sub}</p>
+                        {sensorValue && (
+                          <p className="mt-0.5 text-[10px] font-medium text-sky-600">{sensorLabel}: {sensorValue}</p>
+                        )}
                       </div>
                       <button
                         type="button"
                         onClick={() => handleToggleAutoMode(mode, !isOn)}
-                        disabled={thresholdsPending}
+                        disabled={thresholdsPending || !isOnline}
                         className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ring-1 ring-slate-200 disabled:opacity-60 ${isOn ? "bg-emerald-500" : "bg-slate-200"}`}
                       >
                         <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${isOn ? "translate-x-6" : "translate-x-1"}`} />
@@ -332,7 +364,7 @@ export default function DeviceControlPage() {
               <button
                 type="button"
                 onClick={saveThresholds}
-                disabled={thresholdsPending || autoModes === null}
+                disabled={thresholdsPending || autoModes === null || !isOnline}
                 className="inline-flex h-8 items-center gap-2 rounded-xl bg-[#004a87] px-4 text-xs font-semibold text-white transition hover:bg-[#003d72] disabled:opacity-60"
               >
                 {thresholdsPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
@@ -372,7 +404,7 @@ export default function DeviceControlPage() {
                       <button
                         type="button"
                         onClick={() => toggle(ctrl)}
-                        disabled={isPending}
+                        disabled={isPending || !isOnline}
                         className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-semibold transition disabled:opacity-60 ${isOn ? tone.btn : tone.btnOff}`}
                       >
                         {isPending && <Loader2 className="h-3 w-3 animate-spin" />}
