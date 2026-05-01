@@ -8,6 +8,8 @@ import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 import { useUserDevices } from "@/lib/useUserDevices";
 import { useIncubatorDevices } from "@/lib/useIncubatorDevices";
+import { useDeviceNotifications } from "@/lib/useDeviceNotifications";
+import { useNotificationPreferences } from "@/lib/useNotificationPreferences";
 import Link from "next/link";
 import {
   Plus,
@@ -21,6 +23,127 @@ import {
   X,
   Loader2,
 } from "lucide-react";
+
+// Device card component with notification hooks
+function DeviceCard({ owned, liveDevice, uid, onRemove }) {
+  const { preferences: notificationPrefs } = useNotificationPreferences(uid, owned.id);
+  
+  // Enable automatic notifications for this device
+  useDeviceNotifications(
+    owned.nickname || owned.id,
+    liveDevice,
+    notificationPrefs,
+    true
+  );
+
+  const live = liveDevice || {};
+  const lastSeenMs = typeof live?.lastSeen === "number" ? live.lastSeen : 0;
+  const now = Date.now();
+  const isStale = lastSeenMs === 0 || (now - lastSeenMs) > 45000;
+  const isOnline = live?.mode === "online" && !isStale;
+  const tempValid = typeof live?.tempC === "number" && live.tempC !== -999;
+  const humValid = typeof live?.humidity === "number" && live.humidity !== -999;
+
+  return (
+    <div
+      className="group relative flex h-full min-h-[320px] flex-col rounded-2xl bg-white shadow-sm ring-1 ring-slate-100 transition hover:-translate-y-0.5 hover:shadow-md hover:ring-sky-100"
+    >
+      <div className="flex items-start justify-between px-5 pt-5 pb-3">
+        <div className="flex-1 min-w-0 pr-2">
+          <p className="truncate text-sm font-semibold text-slate-900">
+            {owned.nickname || owned.id}
+          </p>
+          <p className="text-[10px] font-mono text-slate-400 truncate">{owned.id}</p>
+        </div>
+        <span
+          className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${
+            isOnline
+              ? "bg-emerald-50 text-emerald-600 ring-emerald-100"
+              : "bg-slate-100 text-slate-400 ring-slate-200"
+          }`}
+        >
+          {isOnline ? (
+            <Wifi className="h-2.5 w-2.5" />
+          ) : (
+            <WifiOff className="h-2.5 w-2.5" />
+          )}
+          {isOnline ? "Online" : "Offline"}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 px-5 pb-4">
+        <div className="rounded-xl bg-rose-50 px-3 py-3 ring-1 ring-rose-100">
+          <div className="flex items-center gap-1 mb-1">
+            <Thermometer className="h-3 w-3 text-rose-400" />
+            <span className="text-[9px] font-medium uppercase tracking-wider text-rose-400">Temp</span>
+          </div>
+          <p className="text-xl font-bold text-rose-600">
+            {tempValid ? `${live.tempC.toFixed(1)}°` : "—"}
+          </p>
+          <p className="text-[9px] text-rose-400">°C</p>
+        </div>
+        <div className="rounded-xl bg-sky-50 px-3 py-3 ring-1 ring-sky-100">
+          <div className="flex items-center gap-1 mb-1">
+            <Droplets className="h-3 w-3 text-sky-400" />
+            <span className="text-[9px] font-medium uppercase tracking-wider text-sky-400">Humidity</span>
+          </div>
+          <p className="text-xl font-bold text-sky-600">
+            {humValid ? `${Math.round(live.humidity)}` : "—"}
+          </p>
+          <p className="text-[9px] text-sky-400">%</p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1 px-5 pb-3">
+        {[
+          { label: "Heater", val: live?.heaterBulb },
+          { label: "Fan", val: live?.fan },
+          { label: "Humidifier", val: live?.humidifier },
+          { label: "Turner", val: live?.eggTurner },
+        ].map(({ label, val }) => (
+          <span
+            key={label}
+            className={`rounded-full px-2 py-0.5 text-[9px] font-semibold ring-1 ${
+              val
+                ? "bg-emerald-50 text-emerald-600 ring-emerald-100"
+                : "bg-slate-100 text-slate-400 ring-slate-200"
+            }`}
+          >
+            {label}: {val ? "ON" : "OFF"}
+          </span>
+        ))}
+        {live?.waterLow !== undefined && (
+          <span
+            className={`rounded-full px-2 py-0.5 text-[9px] font-semibold ring-1 ${
+              live.waterLow
+                ? "bg-amber-50 text-amber-600 ring-amber-100"
+                : "bg-emerald-50 text-emerald-600 ring-emerald-100"
+            }`}
+          >
+            {live.waterLow ? "⚠ Water Low" : "Water OK"}
+          </span>
+        )}
+      </div>
+
+      <div className="mt-auto border-t border-slate-100 px-5 py-3 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => onRemove(owned.id, owned.nickname || owned.id)}
+          className="text-[10px] text-slate-400 hover:text-rose-500 transition"
+        >
+          Remove
+        </button>
+        <Link
+          href={`/devices/${owned.id}`}
+          className="inline-flex items-center gap-1 rounded-xl bg-[#004a87]/10 px-3 py-1.5 text-[11px] font-semibold text-[#004a87] transition hover:bg-[#004a87]/20"
+        >
+          Manage
+          <ChevronRight className="h-3 w-3" />
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const [uid, setUid] = useState(null);
@@ -135,117 +258,15 @@ export default function DashboardPage() {
 
           {!devicesLoading && ownedDevices.length > 0 && (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {ownedDevices.map((owned) => {
-                const live = liveDevices[owned.id] || {};
-                // Check if device is stale (hasn't updated in 45+ seconds)
-                const lastSeenMs = typeof live?.lastSeen === "number" ? live.lastSeen : 0;
-                const now = Date.now();
-                const isStale = lastSeenMs === 0 || (now - lastSeenMs) > 45000;
-                const isOnline = live?.mode === "online" && !isStale;
-                const tempValid = typeof live?.tempC === "number" && live.tempC !== -999;
-                const humValid = typeof live?.humidity === "number" && live.humidity !== -999;
-
-                return (
-                  <div
-                    key={owned.id}
-                    className="group relative flex h-full min-h-[320px] flex-col rounded-2xl bg-white shadow-sm ring-1 ring-slate-100 transition hover:-translate-y-0.5 hover:shadow-md hover:ring-sky-100"
-                  >
-                    <div className="flex items-start justify-between px-5 pt-5 pb-3">
-                      <div className="flex-1 min-w-0 pr-2">
-                        <p className="truncate text-sm font-semibold text-slate-900">
-                          {owned.nickname || owned.id}
-                        </p>
-                        <p className="text-[10px] font-mono text-slate-400 truncate">{owned.id}</p>
-                      </div>
-                      <span
-                        className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${
-                          isOnline
-                            ? "bg-emerald-50 text-emerald-600 ring-emerald-100"
-                            : "bg-slate-100 text-slate-400 ring-slate-200"
-                        }`}
-                      >
-                        {isOnline ? (
-                          <Wifi className="h-2.5 w-2.5" />
-                        ) : (
-                          <WifiOff className="h-2.5 w-2.5" />
-                        )}
-                        {isOnline ? "Online" : "Offline"}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 px-5 pb-4">
-                      <div className="rounded-xl bg-rose-50 px-3 py-3 ring-1 ring-rose-100">
-                        <div className="flex items-center gap-1 mb-1">
-                          <Thermometer className="h-3 w-3 text-rose-400" />
-                          <span className="text-[9px] font-medium uppercase tracking-wider text-rose-400">Temp</span>
-                        </div>
-                        <p className="text-xl font-bold text-rose-600">
-                          {tempValid ? `${live.tempC.toFixed(1)}°` : "—"}
-                        </p>
-                        <p className="text-[9px] text-rose-400">°C</p>
-                      </div>
-                      <div className="rounded-xl bg-sky-50 px-3 py-3 ring-1 ring-sky-100">
-                        <div className="flex items-center gap-1 mb-1">
-                          <Droplets className="h-3 w-3 text-sky-400" />
-                          <span className="text-[9px] font-medium uppercase tracking-wider text-sky-400">Humidity</span>
-                        </div>
-                        <p className="text-xl font-bold text-sky-600">
-                          {humValid ? `${Math.round(live.humidity)}` : "—"}
-                        </p>
-                        <p className="text-[9px] text-sky-400">%</p>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-1 px-5 pb-3">
-                      {[
-                        { label: "Heater", val: live?.heaterBulb },
-                        { label: "Fan", val: live?.fan },
-                        { label: "Mist", val: live?.humidifier },
-                        { label: "Turner", val: live?.eggTurner },
-                      ].map(({ label, val }) => (
-                        <span
-                          key={label}
-                          className={`rounded-full px-2 py-0.5 text-[9px] font-semibold ring-1 ${
-                            val
-                              ? "bg-emerald-50 text-emerald-600 ring-emerald-100"
-                              : "bg-slate-100 text-slate-400 ring-slate-200"
-                          }`}
-                        >
-                          {label}: {val ? "ON" : "OFF"}
-                        </span>
-                      ))}
-                      {live?.waterLow !== undefined && (
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[9px] font-semibold ring-1 ${
-                            live.waterLow
-                              ? "bg-amber-50 text-amber-600 ring-amber-100"
-                              : "bg-emerald-50 text-emerald-600 ring-emerald-100"
-                          }`}
-                        >
-                          {live.waterLow ? "⚠ Water Low" : "Water OK"}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="mt-auto border-t border-slate-100 px-5 py-3 flex items-center justify-between">
-                      <button
-                        type="button"
-                        onClick={() => handleRemove(owned.id, owned.nickname || owned.id)}
-                        className="text-[10px] text-slate-400 hover:text-rose-500 transition"
-                      >
-                        Remove
-                      </button>
-                      <Link
-                        href={`/devices/${owned.id}`}
-                        className="inline-flex items-center gap-1 rounded-xl bg-[#004a87]/10 px-3 py-1.5 text-[11px] font-semibold text-[#004a87] transition hover:bg-[#004a87]/20"
-                      >
-                        Manage
-                        <ChevronRight className="h-3 w-3" />
-                      </Link>
-                    </div>
-                  </div>
-                );
-              })}
+              {ownedDevices.map((owned) => (
+                <DeviceCard
+                  key={owned.id}
+                  owned={owned}
+                  liveDevice={liveDevices[owned.id] || {}}
+                  uid={uid}
+                  onRemove={handleRemove}
+                />
+              ))}
 
               <button
                 type="button"

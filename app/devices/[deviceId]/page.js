@@ -193,7 +193,7 @@ export default function DevicePage() {
               {[
                 { key: "heaterBulb", label: "Heater", icon: Zap, onColor: "text-rose-500", onBg: "bg-rose-50", onRing: "ring-rose-100" },
                 { key: "humidifier", label: "Humidifier", icon: Droplet, onColor: "text-sky-500", onBg: "bg-sky-50", onRing: "ring-sky-100" },
-                { key: "fan", label: "Exhaust Fan", icon: Wind, onColor: "text-slate-600", onBg: "bg-slate-50", onRing: "ring-slate-200" },
+                { key: "fan", label: "Fan", icon: Wind, onColor: "text-slate-600", onBg: "bg-slate-50", onRing: "ring-slate-200" },
                 { key: "eggTurner", label: "Egg Turner", icon: RotateCcw, onColor: "text-indigo-500", onBg: "bg-indigo-50", onRing: "ring-indigo-100" },
               ].map(({ key, label, icon: Icon, onColor, onBg, onRing }) => {
                 const isOn = Boolean(live?.[key]);
