@@ -201,16 +201,6 @@ export default function TopBar({
     return iconMap[iconName] || Bell;
   };
 
-  const getIconColor = (tone) => {
-    const toneMap = {
-      warning: "text-rose-500",
-      success: "text-emerald-500",
-      info: "text-sky-500",
-      danger: "text-rose-500",
-    };
-    return toneMap[tone] || "text-slate-500";
-  };
-
   const markAllAsRead = async () => {
     if (overrideActive) return;
     if (!uid) return;
@@ -330,7 +320,7 @@ export default function TopBar({
                   <div className="max-h-[420px] overflow-auto sm:max-h-[420px]">
                     {dropdownNotifications.map((item) => {
                       const IconComponent = getIconComponent(item?.icon);
-                      const iconColor = getIconColor(item?.tone);
+                      const iconColor = item?.iconColor || "text-slate-500";
                       const isRead = Boolean(item?.read);
 
                       const titleText =
