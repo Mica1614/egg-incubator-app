@@ -6,8 +6,10 @@ import { useParams, useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from "firebase/firestore";
 import { auth, firestore } from "@/lib/firebase";
+import { useNotificationPreferences } from "@/lib/useNotificationPreferences";
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
+import NotificationSettings from "@/components/NotificationSettings";
 import Link from "next/link";
 import { ChevronLeft, Save, Loader2, AlertTriangle } from "lucide-react";
 import NotificationToggle from "@/components/NotificationToggle";
@@ -21,6 +23,7 @@ const DEFAULT_CONFIG = {
 export default function DeviceSettingsPage() {
   const { deviceId } = useParams();
   const router = useRouter();
+  const [user, setUser] = useState(null);
   const [authorized, setAuthorized] = useState(null);
   const [nickname, setNickname] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -30,10 +33,14 @@ export default function DeviceSettingsPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
 
+  // Get notification preferences
+  const { preferences: notificationPrefs, updatePreference: updateNotificationPref } = useNotificationPreferences(user?.uid, deviceId);
+
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      if (!user) { router.replace("/login"); return; }
-      const snap = await getDoc(doc(firestore, "users", user.uid, "devices", deviceId));
+    const unsub = onAuthStateChanged(auth, async (authUser) => {
+      setUser(authUser);
+      if (!authUser) { router.replace("/login"); return; }
+      const snap = await getDoc(doc(firestore, "users", authUser.uid, "devices", deviceId));
       if (!snap.exists()) { setAuthorized(false); return; }
       setNickname(snap.data()?.nickname || deviceId);
       setAuthorized(true);
@@ -195,6 +202,18 @@ export default function DeviceSettingsPage() {
                   loading={false}
                 />
               </div>
+
+              {/* Notification Settings - Per Type Muting */}
+              {notificationPrefs && Object.keys(notificationPrefs).length > 0 && (
+                <div className="rounded-2xl bg-white px-6 py-5 shadow-sm ring-1 ring-slate-100">
+                  <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Notification Types</h2>
+                  <NotificationSettings 
+                    preferences={notificationPrefs}
+                    onToggle={updateNotificationPref}
+                    loading={false}
+                  />
+                </div>
+              )}
 
               {/* Device ID info */}
               <div className="rounded-2xl bg-white px-6 py-5 shadow-sm ring-1 ring-slate-100">

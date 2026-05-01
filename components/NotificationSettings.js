@@ -1,12 +1,14 @@
 // @ts-nocheck
 "use client";
 
-import { Bell, BellOff, Droplet, RotateCcw, Wind, CloudRain, Thermometer, Zap } from "lucide-react";
+import { Bell, BellOff, Droplet, RotateCcw, Wind, CloudRain, Thermometer, Heater } from "lucide-react";
 import { NOTIFICATION_TYPES } from "@/lib/notificationService";
 
 const iconMap = {
   [NOTIFICATION_TYPES.WATER_LOW]: Droplet,
   [NOTIFICATION_TYPES.WATER_OK]: Droplet,
+  [NOTIFICATION_TYPES.HEATER_ON]: Heater,
+  [NOTIFICATION_TYPES.HEATER_OFF]: Heater,
   [NOTIFICATION_TYPES.EGG_TURNER_ON]: RotateCcw,
   [NOTIFICATION_TYPES.EGG_TURNER_OFF]: RotateCcw,
   [NOTIFICATION_TYPES.FAN_ON]: Wind,
@@ -30,6 +32,13 @@ export default function NotificationSettings({ preferences, onToggle, loading })
       items: [
         { type: NOTIFICATION_TYPES.WATER_LOW, label: "Water Level Low" },
         { type: NOTIFICATION_TYPES.WATER_OK, label: "Water Level Normal" },
+      ],
+    },
+    {
+      label: "Heater",
+      items: [
+        { type: NOTIFICATION_TYPES.HEATER_ON, label: "Heater Started" },
+        { type: NOTIFICATION_TYPES.HEATER_OFF, label: "Heater Stopped" },
       ],
     },
     {

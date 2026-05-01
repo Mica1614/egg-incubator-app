@@ -9,6 +9,7 @@ import { auth, firestore } from "@/lib/firebase";
 import { useIncubatorDevices } from "@/lib/useIncubatorDevices";
 import { useDeviceNotifications } from "@/lib/useDeviceNotifications";
 import { useNotificationPreferences } from "@/lib/useNotificationPreferences";
+import { useDeviceHistoryLogger } from "@/lib/useDeviceHistoryLogger";
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 import Link from "next/link";
@@ -16,7 +17,7 @@ import { DotLottieReact } from "@lottiefiles/dotlottie-react";
 import { ChevronLeft, Loader2, Radio, AlertTriangle } from "lucide-react";
 
 const MANUAL_CONTROLS = [
-  { key: "heater",     esp32Key: "heaterBulb", stateKey: "heaterBulb", title: "Heater Unit",  subtitle: "Incubation target: 37.5°C", tone: "rose",   lottieSrc: "https://lottie.host/a326d1d6-8a59-41a0-a096-b51612d776a7/zpWIYNjsIK.lottie" },
+  { key: "heater",     esp32Key: "heaterBulb", stateKey: "heaterBulb", title: "Heater",  subtitle: "Incubation target: 37.5°C", tone: "rose",   lottieSrc: "https://lottie.host/a326d1d6-8a59-41a0-a096-b51612d776a7/zpWIYNjsIK.lottie" },
   { key: "humidifier", esp32Key: "humidifier", stateKey: "humidifier", title: "Humidifier",   subtitle: "Incubation target: 60% RH",    tone: "sky",    lottieSrc: "https://lottie.host/0547fe37-7ced-4ad5-9e4c-a0212c0e6a8b/VJivw3H1xl.lottie" },
   { key: "exhaust",    esp32Key: "fan",        stateKey: "fan",        title: "Fan",  subtitle: "Airflow & Heat Regulation",    tone: "slate",  lottieSrc: "https://lottie.host/08a2092b-8c40-4157-8d9f-d0fb42778d4d/MScaWmtsHw.lottie" },
   { key: "turner",     esp32Key: "eggTurner",  stateKey: "eggTurner",  title: "Egg Turner",   subtitle: "Manual rotation control",      tone: "indigo", lottieSrc: "https://lottie.host/e4fb9d0e-96b5-4885-bc68-b44334623733/3YgT6TptdD.lottie" },
@@ -77,12 +78,16 @@ export default function DeviceControlPage() {
   const { preferences: notificationPrefs } = useNotificationPreferences(user?.uid, deviceId);
   const prefs = notificationPrefs || {};
   
+  // Enable notifications as soon as device is authorized - preferences will use defaults if not loaded yet
   useDeviceNotifications(
     nickname || deviceId,
     live,
     prefs,
-    authorized === true && Object.keys(prefs).length > 0 // only enable if page is authorized and prefs are loaded
+    authorized === true // enable as soon as authorized, preferences will have defaults
   );
+
+  // Log sensor readings and actuator events to Firestore history collections
+  useDeviceHistoryLogger(deviceId, live, authorized === true);
   
   // Check if device is stale (hasn't updated in 45+ seconds)
   const lastSeenMs = typeof live?.lastSeen === "number" ? live.lastSeen : 0;

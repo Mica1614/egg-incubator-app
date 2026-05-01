@@ -21,7 +21,7 @@ import {
   ScanLine,
   Settings,
   ChevronLeft,
-  Zap,
+  Heater,
   Droplet,
   Wind,
   RotateCcw,
@@ -175,7 +175,7 @@ export default function DevicePage() {
 
             <div className="rounded-2xl bg-white px-5 py-4 shadow-sm ring-1 ring-slate-100">
               <div className="flex items-center gap-1.5 mb-2">
-                <Zap className="h-3.5 w-3.5 text-amber-400" />
+                <Heater className="h-3.5 w-3.5 text-amber-400" />
                 <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Heater</span>
               </div>
               <p className={`text-sm font-bold ${live?.heaterBulb ? "text-rose-500" : "text-slate-400"}`}>
@@ -191,7 +191,7 @@ export default function DevicePage() {
             </h2>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {[
-                { key: "heaterBulb", label: "Heater", icon: Zap, onColor: "text-rose-500", onBg: "bg-rose-50", onRing: "ring-rose-100" },
+                { key: "heaterBulb", label: "Heater", icon: Heater, onColor: "text-rose-500", onBg: "bg-rose-50", onRing: "ring-rose-100" },
                 { key: "humidifier", label: "Humidifier", icon: Droplet, onColor: "text-sky-500", onBg: "bg-sky-50", onRing: "ring-sky-100" },
                 { key: "fan", label: "Fan", icon: Wind, onColor: "text-slate-600", onBg: "bg-slate-50", onRing: "ring-slate-200" },
                 { key: "eggTurner", label: "Egg Turner", icon: RotateCcw, onColor: "text-indigo-500", onBg: "bg-indigo-50", onRing: "ring-indigo-100" },

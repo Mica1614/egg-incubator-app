@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
+import { useGlobalMute } from "@/lib/useGlobalMute";
 import {
   Bell,
   LogIn,
@@ -14,6 +15,8 @@ import {
   Wind,
   CloudRain,
   Thermometer,
+  BellOff,
+  Heater,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -36,6 +39,7 @@ export default function TopBar({
   onOpenSidebar = null,
 }) {
   const dropdownRef = useRef(null);
+  const { isMuted, toggle: toggleMute } = useGlobalMute();
   const [userInfo, setUserInfo] = useState({
     displayName: "",
     email: "",
@@ -196,6 +200,9 @@ export default function TopBar({
       Wind,
       CloudRain,
       Thermometer,
+      Heater,
+      Flame: Heater, // legacy alias
+      Zap: Heater, // legacy alias for old Firestore records
       Bell,
     };
     return iconMap[iconName] || Bell;
@@ -280,13 +287,27 @@ export default function TopBar({
                   <p className="text-sm font-semibold tracking-tight text-slate-900">
                     Notifications
                   </p>
-                  <button
-                    type="button"
-                    onClick={markAllAsRead}
-                    className="text-xs font-medium text-slate-500 transition hover:text-slate-700"
-                  >
-                    Mark all as read
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={markAllAsRead}
+                      className="text-xs font-medium text-slate-500 transition hover:text-slate-700"
+                    >
+                      Mark all as read
+                    </button>
+                    <div className="h-4 w-px bg-slate-200" />
+                    <button
+                      type="button"
+                      onClick={toggleMute}
+                      className={`inline-flex items-center gap-1.5 text-xs font-medium transition ${
+                        isMuted ? "text-rose-500 hover:text-rose-700" : "text-slate-500 hover:text-slate-700"
+                      }`}
+                      title={isMuted ? "Notifications muted globally — click to unmute" : "Click to mute all notifications"}
+                    >
+                      <BellOff className="h-3.5 w-3.5" />
+                      {isMuted ? "Unmute" : "Mute"}
+                    </button>
+                  </div>
                 </div>
 
                 {notificationsError ? (
