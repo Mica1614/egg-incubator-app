@@ -1,0 +1,101 @@
+{
+  "devices": {
+    "incubator0": {
+      "state": {
+        "bulbAutoMode": false,
+        "buzzerEnabled": true,
+        "eggTurner": false,
+        "eggTurnerScheduleEnabled": false,
+        "fan": false,
+        "fanScheduleEnabled": false,
+        "heaterBulb": false,
+        "humidifier": false,
+        "humidifierAutoMode": false,
+        "humidity": -999,
+        "ip": "192.168.1.31",
+        "lastSeen": 1777615610063,
+        "mode": "online",
+        "tempC": -999,
+        "testMode": false,
+        "waterHigh": false,
+        "waterLow": true
+      }
+    },
+    "incubator1": {
+      "state": {
+        "bulbAutoMode": false,
+        "buzzerEnabled": false,
+        "eggTurner": false,
+        "eggTurnerScheduleEnabled": false,
+        "fan": false,
+        "fanScheduleEnabled": false,
+        "heaterBulb": false,
+        "humidifier": false,
+        "humidifierAutoMode": false,
+        "humidity": 59.6,
+        "ip": "192.168.1.23",
+        "lastSeen": 1777102518116,
+        "mode": "online",
+        "tempC": 32.9,
+        "testMode": false,
+        "waterHigh": false,
+        "waterLow": true
+      }
+    }
+  },
+  "system_controls": {
+    "enabled": {
+      "exhaust": false,
+      "heater": false,
+      "humidifier": false,
+      "turner": true
+    }
+  },
+  "users": {
+    "1NsQTYxVB6hvzd8LT2yjUgMroHB2": {
+      "address": "",
+      "birthday": "",
+      "cellphoneNumber": "",
+      "createdAt": "2026-03-01T15:09:20.584Z",
+      "email": "micapalpallatoc0@gmail.com",
+      "fullName": "Mica Palpallatoc",
+      "gender": "",
+      "poultryFarmName": "",
+      "username": "Mikay"
+    },
+    "K3Hk7ZoqJIX87jaCUhwiuelovUl2": {
+      "createdAt": "2026-02-28T12:57:56.462Z",
+      "email": "kimanonuevo59@gmail.com",
+      "fullName": "Kim Anonuevo",
+      "username": "Icekim"
+    },
+    "WgF1jNw4q2VW1HgCsfL0kqLhejS2": {
+      "address": "",
+      "birthday": "",
+      "cellphoneNumber": "",
+      "createdAt": "2026-03-08T11:34:19.501Z",
+      "email": "maeruthy@gmail.com",
+      "fullName": "joanaruthcanunigo",
+      "gender": "",
+      "poultryFarmName": "",
+      "username": "joanaruth"
+    },
+    "eOsYAR9AbQgIZbwuvmRbtglQ4gX2": {
+      "createdAt": "2026-02-28T12:55:27.227Z",
+      "email": "kimanonuevo59@gmail.com",
+      "fullName": "Kim Anonuevo",
+      "username": "Icekim"
+    },
+    "sOu0mpYN3DQ3OpHIqWM30ZAmySr1": {
+      "address": "",
+      "birthday": "",
+      "cellphoneNumber": "",
+      "createdAt": "2026-05-01T04:15:13.975Z",
+      "email": "aristonmagboo17@gmail.com",
+      "fullName": "Magboo",
+      "gender": "",
+      "poultryFarmName": "",
+      "username": "Ariston"
+    }
+  }
+}
