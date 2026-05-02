@@ -133,12 +133,24 @@ export default function ConfigurationPage() {
     autoSave();
   }, [cooldownMinutes]);
 
-  // Get current auth user's email
+  // Get current auth user's email and sync it to Firestore so alert emails
+  // always go to the currently-logged-in account, not a stale previous user.
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setAuthUser(user);
       if (user?.email) {
         setAlertEmail(user.email);
+        // Overwrite alertEmail in Firestore with the current user's email.
+        // This prevents onSnapshot from restoring a previous account's email.
+        try {
+          await setDoc(
+            doc(firestore, "system_configurations", "default"),
+            { alerts: { alertEmail: user.email } },
+            { merge: true }
+          );
+        } catch (e) {
+          console.error("[config] Failed to sync alertEmail:", e);
+        }
       }
     });
     return () => unsubscribe();
@@ -186,7 +198,9 @@ export default function ConfigurationPage() {
   }, []);
 
   const sendTestEmail = async () => {
-    const to = authUser?.email;
+    // On mobile, Firebase Auth may still be initializing when the button is pressed.
+    // Fall back to the alertEmail state (loaded from Firestore) if authUser is not yet set.
+    const to = authUser?.email || alertEmail;
     if (!to) {
       setTestEmailStatus("error");
       return;
