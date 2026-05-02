@@ -11,12 +11,14 @@ import nodemailer from "nodemailer";
 import { buildAlertEmailHtml } from "@/lib/emailTemplate";
 
 // ── Gmail SMTP transporter ──────────────────────────────────────────────────
-// Credentials come from environment variables only — never hard-coded.
+// Use explicit host/port instead of service:'gmail' — more reliable with App Passwords.
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true, // SSL
   auth: {
-    user: process.env.GMAIL_USER,       // e.g. yourapp@gmail.com
-    pass: process.env.GMAIL_APP_PASSWORD, // Gmail App Password (16-char)
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD,
   },
 });
 
@@ -60,7 +62,10 @@ export async function POST(request) {
 
     return Response.json({ success: true });
   } catch (error) {
+    // Log the real error server-side (visible in Vercel logs) for debugging.
     console.error("[send-alert-email] Failed to send email:", error.message);
+    console.error("[send-alert-email] GMAIL_USER set:", !!process.env.GMAIL_USER);
+    console.error("[send-alert-email] GMAIL_APP_PASSWORD set:", !!process.env.GMAIL_APP_PASSWORD);
 
     // Return a safe error message — don't leak internal details to the client
     return Response.json(
