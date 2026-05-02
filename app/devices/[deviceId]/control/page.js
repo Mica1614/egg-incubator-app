@@ -89,9 +89,9 @@ export default function DeviceControlPage() {
   // Log sensor readings and actuator events to Firestore history collections
   useDeviceHistoryLogger(deviceId, live, authorized === true);
   
-  // Check if device is stale (hasn't updated in 45+ seconds)
+  // Check if device is stale (hasn't updated in 15+ seconds)
   const lastSeenMs = typeof live?.lastSeen === "number" ? live.lastSeen : 0;
-  const isStale = lastSeenMs === 0 || (Date.now() - lastSeenMs) > 45000;
+  const isStale = lastSeenMs > 0 && (Date.now() - lastSeenMs) > 15000;
   const isOnline = live?.mode === "online" && !isStale;
 
   // Sync threshold form from live device values (skip if user is actively saving)

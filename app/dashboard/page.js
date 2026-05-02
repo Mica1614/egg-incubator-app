@@ -28,6 +28,14 @@ import {
 function DeviceCard({ owned, liveDevice, uid, onRemove }) {
   const { preferences: notificationPrefs } = useNotificationPreferences(uid, owned.id);
   
+  // Force re-render every 5 s so Date.now() stays fresh for offline detection
+  // (RTDB never fires new events when a device goes silent)
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 5000);
+    return () => clearInterval(t);
+  }, []);
+
   // Enable automatic notifications for this device
   useDeviceNotifications(
     owned.nickname || owned.id,
@@ -39,7 +47,7 @@ function DeviceCard({ owned, liveDevice, uid, onRemove }) {
   const live = liveDevice || {};
   const lastSeenMs = typeof live?.lastSeen === "number" ? live.lastSeen : 0;
   const now = Date.now();
-  const isStale = lastSeenMs === 0 || (now - lastSeenMs) > 45000;
+  const isStale = lastSeenMs > 0 && (now - lastSeenMs) > 15000;
   const isOnline = live?.mode === "online" && !isStale;
   const tempValid = typeof live?.tempC === "number" && live.tempC !== -999;
   const humValid = typeof live?.humidity === "number" && live.humidity !== -999;

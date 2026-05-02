@@ -64,7 +64,8 @@ export default function DevicePage() {
   );
 
   const live = devices[deviceId] || {};
-  const isOnline = live?.mode === "online";
+  const lastSeenMs = typeof live?.lastSeen === "number" ? live.lastSeen : 0;
+  const isOnline = live?.mode === "online" && (lastSeenMs === 0 || (Date.now() - lastSeenMs) < 15000);
   const tempValid = typeof live?.tempC === "number" && live.tempC !== -999;
   const humValid = typeof live?.humidity === "number" && live.humidity !== -999;
 

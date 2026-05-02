@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Poppins, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
+import { AlertEmailProvider } from "@/components/AlertEmailProvider";
 import { Toaster } from "sonner";
 
 const poppins = Poppins({
@@ -35,6 +36,7 @@ export default function RootLayout({
         className={`${poppins.variable} ${geistMono.variable} antialiased`}
       >
         <AuthProvider>
+          <AlertEmailProvider />
           {children}
           <Toaster position="top-right" richColors />
         </AuthProvider>
