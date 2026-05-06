@@ -8,6 +8,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { auth, firestore } from "@/lib/firebase";
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
+import BreadcrumbNav from "@/components/BreadcrumbNav";
 import Link from "next/link";
 import { ChevronLeft, ScanLine, AlertTriangle } from "lucide-react";
 
@@ -44,12 +45,7 @@ export default function DeviceScannerPage() {
         <main className="flex flex-1 flex-col gap-6">
           <TopBar title="Egg Scanner" onOpenSidebar={() => setIsSidebarOpen(true)} />
 
-          <div className="flex flex-col gap-1">
-            <Link href={`/devices/${deviceId}`} className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-600 transition">
-              <ChevronLeft className="h-3 w-3" /> {nickname || deviceId}
-            </Link>
-            <h1 className="text-base font-bold tracking-tight text-slate-900">Egg Detector Scanner</h1>
-          </div>
+          <BreadcrumbNav deviceId={deviceId} deviceName={nickname} currentPage="Scanner" />
 
           <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-slate-200 bg-white px-8 py-16 text-center">
             <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-sky-50 text-sky-400 ring-1 ring-sky-100">

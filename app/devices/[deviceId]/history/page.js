@@ -17,6 +17,7 @@ import {
 import { auth, firestore } from "@/lib/firebase";
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
+import BreadcrumbNav from "@/components/BreadcrumbNav";
 import Link from "next/link";
 import {
   ChevronLeft,
@@ -276,16 +277,11 @@ export default function DeviceHistoryPage() {
         <main className="flex flex-1 flex-col gap-6">
           <TopBar title="Device History" onOpenSidebar={() => setIsSidebarOpen(true)} />
 
-          {/* Breadcrumb + export buttons */}
+          <BreadcrumbNav deviceId={deviceId} deviceName={nickname} currentPage="History" />
+
+          {/* Export buttons */}
           <div className="flex items-end justify-between gap-4">
             <div className="flex flex-col gap-1">
-              <Link
-                href={`/devices/${deviceId}`}
-                className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-600 transition"
-              >
-                <ChevronLeft className="h-3 w-3" />
-                {nickname || deviceId}
-              </Link>
               <h1 className="text-base font-bold tracking-tight text-slate-900">Historical Data</h1>
             </div>
             <div className="flex gap-2">

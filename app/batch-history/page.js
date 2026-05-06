@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Sidebar from "@/components/Sidebar";
-import { Info, Search, Box, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Check, Loader2, Trash2, FileDown, FileSpreadsheet } from "lucide-react";
+import { Info, Search, Box, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Check, Loader2, Trash2, FileDown, FileSpreadsheet, Monitor } from "lucide-react";
 import TopBar from "@/components/TopBar";
 import { firestore } from "@/lib/firebase";
 import { collection, onSnapshot, orderBy, query, doc, updateDoc, serverTimestamp, deleteDoc, setDoc } from "firebase/firestore";
@@ -41,7 +41,10 @@ const addDays = (date, days) => {
 
 const incubationDaysForType = (eggType) => {
   const type = String(eggType || "").toLowerCase();
+  if (type === "chicken") return 21;
   if (type === "duck") return 28;
+  if (type === "quail") return 18;
+  if (type === "goose") return 30;
   return 21;
 };
 
@@ -68,27 +71,30 @@ const computeDerived = ({ startDate, eggType }) => {
   };
 };
 
-function BatchCard({ batch, formatShortDate }) {
-  const [hatchedValue, setHatchedValue] = useState(batch?.hatchedEggs ?? "");
+function BatchRow({ batch, formatShortDate }) {
+  // Auto-calculate hatched from scan data if not explicitly set
+  const autoHatched = Math.max(0, (batch?.totalEggs || 0) - (batch?.deadEggs || 0) - (batch?.infertileEggs || 0));
+  const [hatchedValue, setHatchedValue] = useState(
+    batch?.hatchedEggs != null ? String(batch.hatchedEggs) : String(autoHatched)
+  );
   const [isUpdating, setIsUpdating] = useState(false);
   const [showCheck, setShowCheck] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const hatchRate = batch?.totalEggs > 0
+    ? Math.round((Number(hatchedValue || 0) / Number(batch.totalEggs)) * 100)
+    : 0;
+
   const handleSaveHatched = async () => {
     const val = Number(hatchedValue);
     if (isNaN(val) || val < 0) return;
-    if (val > (batch?.totalEggs ?? 9999)) return;
-
     setIsUpdating(true);
     try {
-      // Update the batch with hatched eggs count
       await updateDoc(doc(firestore, "egg_batches", batch.id), {
         hatchedEggs: val,
         updatedAt: serverTimestamp(),
       });
-
-      // Create or update chick inventory record
       const hatchDate = new Date();
       await setDoc(doc(firestore, "chick_inventory", `batch_${batch.batchId}_${hatchDate.getTime()}`), {
         batch_id: String(batch.batchId || ""),
@@ -98,7 +104,6 @@ function BatchCard({ batch, formatShortDate }) {
         sold_chicks: 0,
         createdAt: serverTimestamp(),
       });
-
       setShowCheck(true);
       setTimeout(() => setShowCheck(false), 2000);
     } catch (e) {
@@ -120,117 +125,76 @@ function BatchCard({ batch, formatShortDate }) {
 
   return (
     <>
-      <article className="rounded-3xl bg-white px-4 py-4 shadow-sm ring-1 ring-slate-100">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[13px] font-semibold tracking-tight text-slate-900">
-              {batch?.batchId ? `BATCH-${batch.batchId}` : "BATCH"}
-            </p>
-            <p className="mt-0.5 text-[11px] text-slate-500">
-              {typeof batch?.totalEggs === "number" ? `${batch.totalEggs} eggs total` : "-"}
-            </p>
+      <tr className="border-b border-slate-100 hover:bg-slate-50/60 transition">
+        <td className="py-3 pr-4 pl-1">
+          <div className="flex flex-col">
+            <span className="text-[12px] font-semibold text-slate-900">{batch?.batchId || "—"}</span>
+            {(batch?.deviceName || batch?.deviceId) && (
+              <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-sky-600">
+                <Monitor className="h-2.5 w-2.5" />{batch.deviceName || batch.deviceId}
+              </span>
+            )}
           </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => setIsDeleteConfirmOpen(true)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 ring-1 ring-rose-100 transition hover:bg-rose-100"
-              title="Delete Batch"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-            <div className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-slate-50 text-slate-600 ring-1 ring-slate-100">
-              <Box className="h-3.5 w-3.5" />
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="rounded-2xl bg-sky-50/70 px-3 py-2 ring-1 ring-sky-100/80">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Egg Type</p>
-            <p className="mt-1 text-base font-semibold tracking-tight text-slate-900">
-              {batch?.eggType ? String(batch.eggType) : "-"}
-            </p>
-          </div>
-
-          <div className="rounded-2xl bg-sky-50/70 px-3 py-2 ring-1 ring-sky-100/80">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Status</p>
-            <p className="mt-1 text-base font-semibold tracking-tight text-slate-900">
-              {batch?.status ? String(batch.status) : "-"}
-            </p>
-          </div>
-
-          <div className="rounded-2xl bg-amber-50/60 px-3 py-2 ring-1 ring-amber-100/80">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Start</p>
-            <p className="mt-1 text-[12px] font-semibold tracking-tight text-slate-900">
-              {batch._startDate ? formatShortDate(batch._startDate) : "-"}
-            </p>
-          </div>
-
-          <div className="rounded-2xl bg-amber-50/60 px-3 py-2 ring-1 ring-amber-100/80">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Hatch</p>
-            <p className="mt-1 text-[12px] font-semibold tracking-tight text-slate-900">
-              {batch?._derived?.hatchingDate ? formatShortDate(batch._derived.hatchingDate) : "-"}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-4 space-y-1.5">
-          <label className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Hatched Eggs (Chicks)</label>
-          <div className="flex gap-2">
+        </td>
+        <td className="py-3 pr-4 text-xs text-slate-700 capitalize">{batch?.eggType || "—"}</td>
+        <td className="py-3 pr-4 text-xs font-semibold text-slate-900 tabular-nums">{batch?.totalEggs ?? "—"}</td>
+        <td className="py-3 pr-4">
+          <div className="flex items-center gap-1.5">
             <input
-              type="number"
-              min="0"
-              max={batch?.totalEggs}
+              type="number" min="0" max={batch?.totalEggs}
               value={hatchedValue}
               onChange={(e) => setHatchedValue(e.target.value)}
-              placeholder="Enter count"
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 outline-none transition focus:border-sky-300 focus:ring-4 focus:ring-sky-500/10"
+              className="w-16 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-500/10"
             />
             <button
               onClick={handleSaveHatched}
-              disabled={isUpdating || String(hatchedValue) === String(batch?.hatchedEggs ?? "")}
-              className="inline-flex min-w-[60px] items-center justify-center rounded-xl bg-slate-900 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-slate-800 disabled:opacity-30"
+              disabled={isUpdating || String(hatchedValue) === String(batch?.hatchedEggs ?? autoHatched)}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-30 transition"
             >
-              {isUpdating ? <Loader2 className="h-3 w-3 animate-spin" /> : showCheck ? <Check className="h-3 w-3" /> : "Save"}
+              {isUpdating ? <Loader2 className="h-3 w-3 animate-spin" /> : showCheck ? <Check className="h-3 w-3" /> : <Check className="h-3 w-3" />}
             </button>
           </div>
-        </div>
-
-        <div className="mt-2.5 flex items-center justify-between rounded-2xl bg-slate-50 px-3.5 py-2.5 ring-1 ring-slate-100">
-          <span className="text-[11px] font-medium text-slate-600">Days left</span>
-          <span className="text-[11px] font-semibold text-slate-900">0</span>
-        </div>
-      </article>
+        </td>
+        <td className="py-3 pr-4">
+          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${
+            hatchRate >= 70 ? "bg-emerald-50 text-emerald-700" : hatchRate >= 40 ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700"
+          }`}>
+            {hatchRate}%
+          </span>
+        </td>
+        <td className="py-3 pr-4 text-xs text-slate-500 whitespace-nowrap">{batch._startDate ? formatShortDate(batch._startDate) : "—"}</td>
+        <td className="py-3 pr-4 text-xs text-slate-500 whitespace-nowrap">{batch?._derived?.hatchingDate ? formatShortDate(batch._derived.hatchingDate) : "—"}</td>
+        <td className="py-3 pl-0">
+          <button
+            onClick={() => setIsDeleteConfirmOpen(true)}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50 text-rose-500 ring-1 ring-rose-100 hover:bg-rose-100 transition"
+            title="Delete"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </td>
+      </tr>
 
       {isDeleteConfirmOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-xs rounded-3xl bg-white p-6 shadow-2xl ring-1 ring-slate-200">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 ring-1 ring-rose-100">
-              <Trash2 className="h-6 w-6" />
-            </div>
-            <h3 className="mt-4 text-base font-bold text-slate-900">Delete Batch?</h3>
-            <p className="mt-2 text-xs leading-relaxed text-slate-500">
-              Are you sure you want to delete <span className="font-semibold text-slate-900">BATCH-{batch.batchId}</span>? This action cannot be undone.
-            </p>
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={() => setIsDeleteConfirmOpen(false)}
-                disabled={isDeleting}
-                className="flex-1 rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={isDeleting}
-                className="flex-1 rounded-xl bg-rose-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:opacity-50"
-              >
-                {isDeleting ? "Deleting..." : "Delete"}
-              </button>
+        <tr><td colSpan={8}>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 px-4 backdrop-blur-sm">
+            <div className="w-full max-w-xs rounded-3xl bg-white p-6 shadow-2xl ring-1 ring-slate-200">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 ring-1 ring-rose-100">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <h3 className="mt-4 text-base font-bold text-slate-900">Delete Batch?</h3>
+              <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                Are you sure you want to delete <span className="font-semibold text-slate-900">{batch.batchId}</span>? This cannot be undone.
+              </p>
+              <div className="mt-6 flex gap-3">
+                <button onClick={() => setIsDeleteConfirmOpen(false)} disabled={isDeleting} className="flex-1 rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+                <button onClick={handleDelete} disabled={isDeleting} className="flex-1 rounded-xl bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50">
+                  {isDeleting ? "Deleting..." : "Delete"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </td></tr>
       )}
     </>
   );
@@ -317,7 +281,7 @@ export default function BatchHistoryPage() {
   }, []);
 
   const decorateBatch = (batch) => {
-    const start = batch?.startDate?.toDate ? batch.startDate.toDate() : null;
+    const start = batch?.startDate?.toDate ? batch.startDate.toDate() : batch?.startDate ? new Date(batch.startDate) : null;
     const derived = computeDerived({
       startDate: start,
       eggType: batch?.eggType,
@@ -334,6 +298,8 @@ export default function BatchHistoryPage() {
 
   const historyBatches = useMemo(() => {
     return decoratedBatches.filter((batch) => {
+      // Include if explicitly completed OR if incubation period has ended
+      if (batch?.status === "completed") return true;
       const daysLeft = batch?._derived?.daysLeft;
       return typeof daysLeft === "number" ? daysLeft <= 0 : false;
     });
@@ -491,10 +457,26 @@ export default function BatchHistoryPage() {
               </div>
             ) : (
               <div className="mt-5 space-y-4">
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {pagedBatches.map((batch) => (
-                    <BatchCard key={batch.id} batch={batch} formatShortDate={formatShortDate} />
-                  ))}
+                <div className="overflow-x-auto rounded-2xl ring-1 ring-slate-100">
+                  <table className="min-w-[700px] w-full border-collapse text-left">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50">
+                        <th className="py-2.5 pr-4 pl-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">Batch ID</th>
+                        <th className="py-2.5 pr-4 text-[10px] font-bold uppercase tracking-wider text-slate-400">Type</th>
+                        <th className="py-2.5 pr-4 text-[10px] font-bold uppercase tracking-wider text-slate-400">Total</th>
+                        <th className="py-2.5 pr-4 text-[10px] font-bold uppercase tracking-wider text-slate-400">Hatched</th>
+                        <th className="py-2.5 pr-4 text-[10px] font-bold uppercase tracking-wider text-slate-400">Rate</th>
+                        <th className="py-2.5 pr-4 text-[10px] font-bold uppercase tracking-wider text-slate-400">Start</th>
+                        <th className="py-2.5 pr-4 text-[10px] font-bold uppercase tracking-wider text-slate-400">Hatch Date</th>
+                        <th className="py-2.5 pr-0 text-[10px] font-bold uppercase tracking-wider text-slate-400">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pagedBatches.map((batch) => (
+                        <BatchRow key={batch.id} batch={batch} formatShortDate={formatShortDate} />
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
 
                 <div className="flex flex-col gap-3 rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100 sm:flex-row sm:items-center sm:justify-between">

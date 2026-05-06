@@ -238,14 +238,11 @@ export default function DeviceControlPage() {
         <main className="flex flex-1 flex-col gap-6">
           <TopBar title="System Controls" onOpenSidebar={() => setIsSidebarOpen(true)} />
 
-          {/* Breadcrumb + Title */}
-          <div className="flex flex-col gap-1">
-            <Link href={`/devices/${deviceId}`} className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-600 transition">
-              <ChevronLeft className="h-3 w-3" />
-              {nickname || deviceId}
-            </Link>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <h1 className="text-base font-bold tracking-tight text-slate-900">System Controls</h1>
+          <BreadcrumbNav deviceId={deviceId} deviceName={nickname} currentPage="Controls" />
+
+          {/* Title + Status */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <h1 className="text-base font-bold tracking-tight text-slate-900">System Controls</h1>
               <div className="flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs shadow-sm ring-1 ring-slate-100">
                 <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wider ring-1 ${isOnline ? "bg-emerald-50 text-emerald-600 ring-emerald-100" : "bg-slate-100 text-slate-400 ring-slate-200"}`}>
                   <span className={`h-1.5 w-1.5 rounded-full ${isOnline ? "bg-emerald-500" : "bg-slate-300"}`} />
@@ -254,7 +251,6 @@ export default function DeviceControlPage() {
                 <Radio className="h-3.5 w-3.5 text-slate-400" />
               </div>
             </div>
-          </div>
 
           {error && (
             <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-xs text-rose-700">{error}</div>

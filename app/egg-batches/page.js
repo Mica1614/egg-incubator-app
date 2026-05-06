@@ -31,14 +31,17 @@ import {
   Target,
   Clock,
   Zap,
+  Wand2,
+  Monitor,
 } from "lucide-react";
-import { firestore } from "@/lib/firebase";
+import { firestore, auth } from "@/lib/firebase";
 import {
   addDoc,
   collection,
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -46,6 +49,7 @@ import {
   setDoc,
   Timestamp,
   updateDoc,
+  where,
 } from "firebase/firestore";
 
 const formatToday = () => {
@@ -78,9 +82,27 @@ const addDays = (date, days) => {
 
 const incubationDaysForType = (eggType) => {
   const type = String(eggType || "").toLowerCase();
+  if (type === "chicken") return 21;
   if (type === "duck") return 28;
+  if (type === "quail") return 18;
+  if (type === "goose") return 30;
+  if (type === "turkey") return 28;
   return 21;
 };
+
+const EGG_TYPE_PREFIX = {
+  chicken: "CK", duck: "DK", quail: "QL", goose: "GS", turkey: "TK",
+};
+
+function generateBatchId(eggType) {
+  const prefix = EGG_TYPE_PREFIX[String(eggType || "").toLowerCase()] || "CK";
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(2);
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const hex = Math.floor(Math.random() * 0xffff).toString(16).toUpperCase().padStart(4, "0");
+  return `${prefix}-${yy}${mm}${dd}-${hex}`;
+}
 
 const computeDerived = ({ startDate, eggType }) => {
   const totalDays = incubationDaysForType(eggType);
@@ -295,8 +317,182 @@ const getAIRecommendation = (eggType) => {
   };
 };
 
+function BatchTableRow({ batch, isSelected, onSelect, openHatchModal, getProgressColor, getIncubationAlerts, getHatchPrediction, getAIRecommendation, showRecommendations, setShowRecommendations, controlConfig, onEdit, onDelete }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const progressPct = batch._derived?.progress || 0;
+  const daysPassed = batch._derived?.daysPassed || 0;
+  const totalDays = batch._derived?.totalDays || 21;
+  const daysLeft = typeof batch._derived?.daysLeft === "number" ? batch._derived.daysLeft : "-";
+  const isCompleted = batch?.status === "completed";
+
+  return (
+    <>
+      <tr
+        className={`cursor-pointer transition hover:bg-slate-50 ${isSelected ? "bg-sky-50/60" : ""}`}
+        onClick={() => { onSelect(batch.id); setExpanded((v) => !v); }}
+      >
+        <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">
+          {batch?.batchId ? `BATCH-${batch.batchId}` : "—"}
+        </td>
+        <td className="px-4 py-3 text-slate-700 capitalize whitespace-nowrap">
+          {batch?.eggType || "—"}
+        </td>
+        <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
+          {typeof batch?.totalEggs === "number" ? batch.totalEggs : "—"}
+        </td>
+        <td className="px-4 py-3 whitespace-nowrap">
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-20 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className={`h-full bg-gradient-to-r ${getProgressColor(daysPassed, totalDays)} transition-all`}
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+            <span className="text-[10px] font-semibold text-slate-500">{progressPct}%</span>
+          </div>
+        </td>
+        <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{daysLeft}</td>
+        <td className="px-4 py-3 whitespace-nowrap">
+          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${isCompleted ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100" : "bg-sky-50 text-sky-700 ring-1 ring-sky-100"}`}>
+            {batch?.status || "active"}
+          </span>
+        </td>
+        <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
+          {batch?.deviceName || batch?.deviceId || "—"}
+        </td>
+        <td className="px-4 py-3 text-right whitespace-nowrap">
+          <div className="flex items-center justify-end gap-1.5">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onEdit(batch); }}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-sky-50 text-sky-600 ring-1 ring-sky-100 hover:bg-sky-100 transition"
+              title="Edit"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onDelete(batch.id); }}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50 text-rose-500 ring-1 ring-rose-100 hover:bg-rose-100 transition"
+              title="Delete"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
+              className="inline-flex items-center gap-1 rounded-xl bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-200"
+            >
+              {expanded ? "Less" : "View More"}
+            </button>
+          </div>
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="bg-slate-50/80">
+          <td colSpan={8} className="px-4 pb-4 pt-2">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {/* Incubation Progress */}
+              {!isCompleted && (
+                <div className="rounded-xl bg-white px-4 py-3 ring-1 ring-slate-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Incubation Progress</p>
+                    <span className="text-[10px] font-semibold text-indigo-600">Day {daysPassed} of {totalDays}</span>
+                  </div>
+                  <div className="h-3 overflow-hidden rounded-full bg-slate-200">
+                    <div className={`h-full bg-gradient-to-r ${getProgressColor(daysPassed, totalDays)}`} style={{ width: `${progressPct}%` }} />
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
+                    <div><p className="text-slate-400">Start</p><p className="font-semibold">{batch._startDate ? batch._startDate.toLocaleDateString() : "—"}</p></div>
+                    <div><p className="text-slate-400">Hatch Date</p><p className="font-semibold">{batch._derived?.hatchingDate ? batch._derived.hatchingDate.toLocaleDateString() : "—"}</p></div>
+                  </div>
+                </div>
+              )}
+
+              {/* Completed results */}
+              {isCompleted && (
+                <div className="rounded-xl bg-emerald-50 px-4 py-3 ring-1 ring-emerald-100">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-2">Hatch Results</p>
+                  <div className="grid grid-cols-2 gap-2 text-[10px]">
+                    <div><p className="text-slate-400">Hatched</p><p className="font-semibold text-emerald-600">{batch.hatchedEggs || 0}</p></div>
+                    <div><p className="text-slate-400">Failed</p><p className="font-semibold text-rose-600">{batch.failedToHatch || 0}</p></div>
+                    <div><p className="text-slate-400">Hatch Rate</p><p className="font-semibold text-indigo-600">{(batch.hatchRate || 0).toFixed(1)}%</p></div>
+                  </div>
+                </div>
+              )}
+
+              {/* Incubation Alerts */}
+              {!isCompleted && (() => {
+                const alerts = getIncubationAlerts(daysPassed, batch?.eggType);
+                if (!alerts.length) return null;
+                return (
+                  <div className="rounded-xl bg-amber-50/70 px-4 py-3 ring-1 ring-amber-100/70">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-amber-700 mb-2">Incubation Alerts</p>
+                    <div className="space-y-1.5">
+                      {alerts.slice(0, 3).map((alert, idx) => (
+                        <div key={idx} className="flex items-start gap-2 rounded-lg bg-white px-2 py-1.5 ring-1 ring-slate-100">
+                          <span>{alert.icon}</span>
+                          <div>
+                            <p className="text-[10px] font-semibold text-slate-800">{alert.title}</p>
+                            <p className="text-[9px] text-slate-500">{alert.message}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* AI Recommendation */}
+              <div className="rounded-xl bg-indigo-50/60 px-4 py-3 ring-1 ring-indigo-100/60">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mb-2">AI Recommendation</p>
+                {(() => {
+                  const rec = getAIRecommendation(batch.eggType);
+                  return (
+                    <div className="space-y-1 text-[10px]">
+                      <p><span className="text-slate-400">Temp:</span> <span className="font-semibold">{rec.temperature}</span></p>
+                      <p><span className="text-slate-400">Humidity:</span> <span className="font-semibold">{rec.humidity}</span></p>
+                      <p className="text-slate-600 leading-relaxed mt-1">{rec.text.slice(0, 120)}…</p>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Track Hatch Button */}
+            {!isCompleted && (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); openHatchModal(batch); }}
+                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:from-indigo-700 hover:to-purple-700"
+                >
+                  <ClipboardCheck className="h-4 w-4" />
+                  Track Hatch
+                </button>
+              </div>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 export default function EggBatchesPage() {
   const today = useMemo(() => formatToday(), []);
+  const [userDevices, setUserDevices] = useState([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState("");
+  const [selectedDeviceName, setSelectedDeviceName] = useState("");
+
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+    getDocs(collection(firestore, "users", user.uid, "devices")).then((snap) => {
+      setUserDevices(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    }).catch(() => {});
+  }, []);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -317,7 +513,7 @@ export default function EggBatchesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [batchId, setBatchId] = useState("");
   const [eggType, setEggType] = useState("");
-  const [totalEggs, setTotalEggs] = useState(0);
+  const [totalEggs, setTotalEggs] = useState("");
   const [startDate, setStartDate] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -327,7 +523,7 @@ export default function EggBatchesPage() {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [manageBatchId, setManageBatchId] = useState("");
   const [manageEggType, setManageEggType] = useState("");
-  const [manageTotalEggs, setManageTotalEggs] = useState(0);
+  const [manageTotalEggs, setManageTotalEggs] = useState("");
   const [manageStartDate, setManageStartDate] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -339,8 +535,8 @@ export default function EggBatchesPage() {
   // Hatch tracking states
   const [isHatchModalOpen, setIsHatchModalOpen] = useState(false);
   const [selectedBatchForHatch, setSelectedBatchForHatch] = useState(null);
-  const [eggsHatched, setEggsHatched] = useState(0);
-  const [eggsFailed, setEggsFailed] = useState(0);
+  const [eggsHatched, setEggsHatched] = useState("");
+  const [eggsFailed, setEggsFailed] = useState("");
   const [hatchDate, setHatchDate] = useState(new Date().toISOString().split("T")[0]);
   const [isUpdatingHatch, setIsUpdatingHatch] = useState(false);
   const [hatchError, setHatchError] = useState("");
@@ -401,6 +597,9 @@ export default function EggBatchesPage() {
 
       for (const batch of batches) {
         try {
+          // Never overwrite a batch that was explicitly completed
+          if (batch.status === "completed") continue;
+
           const start = batch?.startDate?.toDate ? batch.startDate.toDate() : null;
           if (!start) continue;
 
@@ -637,8 +836,10 @@ export default function EggBatchesPage() {
   const resetForm = () => {
     setBatchId("");
     setEggType("");
-    setTotalEggs(0);
+    setTotalEggs("");
     setStartDate("");
+    setSelectedDeviceId("");
+    setSelectedDeviceName("");
   };
 
   const openManage = () => {
@@ -648,7 +849,7 @@ export default function EggBatchesPage() {
 
     setManageBatchId(String(selectedBatchRaw.batchId || ""));
     setManageEggType(String(selectedBatchRaw.eggType || ""));
-    setManageTotalEggs(Number(selectedBatchRaw.totalEggs || 0));
+    setManageTotalEggs(selectedBatchRaw.totalEggs ? String(Number(selectedBatchRaw.totalEggs)) : "");
     const start = selectedStartDate;
     const startIso = start
       ? `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(
@@ -657,6 +858,26 @@ export default function EggBatchesPage() {
       : "";
     setManageStartDate(startIso);
     setIsManageOpen(true);
+  };
+
+  const openEditDirect = (batch) => {
+    setSelectedBatchId(batch.id);
+    setManageError("");
+    setManageBatchId(String(batch.batchId || ""));
+    setManageEggType(String(batch.eggType || ""));
+    setManageTotalEggs(batch.totalEggs ? String(Number(batch.totalEggs)) : "");
+    const start = batch.startDate?.toDate ? batch.startDate.toDate() : batch.startDate ? new Date(batch.startDate) : null;
+    const startIso = start
+      ? `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`
+      : "";
+    setManageStartDate(startIso);
+    setIsEditing(true);
+    setIsManageOpen(true);
+  };
+
+  const openDeleteDirect = (batchId) => {
+    setSelectedBatchId(batchId);
+    setIsDeleteConfirmOpen(true);
   };
 
   const handleUpdateBatch = async () => {
@@ -791,13 +1012,18 @@ export default function EggBatchesPage() {
         daysLeft: Math.ceil((hatchingDate.getTime() - parsed.getTime()) / (1000 * 60 * 60 * 24)),
         progress: 0,
         status: "active",
-        // NEW: Individual egg inventory
+        deadEggs: 0,
+        infertileEggs: 0,
+        deviceId: selectedDeviceId || null,
+        deviceName: selectedDeviceName || null,
+        uid: auth.currentUser?.uid || null,
+        // Individual egg inventory
         eggInventory: Array.from({ length: eggs }, (_, i) => ({
           eggId: `EGG-${String(i + 1).padStart(3, '0')}`,
           status: "incubating",
           addedAt: Timestamp.fromDate(parsed),
         })),
-        // NEW: Real-time counts
+        // Real-time counts
         counts: {
           incubating: eggs,
           dead: 0,
@@ -911,8 +1137,8 @@ export default function EggBatchesPage() {
             </div>
           </div>
 
-          <section className="grid gap-4 lg:grid-cols-3">
-            <article className="lg:col-span-2 rounded-3xl bg-white px-6 py-6 shadow-sm ring-1 ring-slate-100">
+          <section className="grid gap-4 lg:grid-cols-3 min-w-0">
+            <article className="lg:col-span-2 min-w-0 rounded-3xl bg-white px-6 py-6 shadow-sm ring-1 ring-slate-100">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="inline-flex items-center rounded-full bg-slate-900/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-700 ring-1 ring-slate-200/60">
@@ -974,7 +1200,7 @@ export default function EggBatchesPage() {
                 </div>
               ) : null}
 
-              <div className="mt-6 grid gap-4 sm:grid-cols-3">
+              <div className="mt-6 grid gap-4 grid-cols-1 sm:grid-cols-3">
                 <div className="rounded-2xl bg-slate-50 px-5 py-4 ring-1 ring-slate-100">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                     Days Left
@@ -1240,11 +1466,11 @@ export default function EggBatchesPage() {
                           onChange={(e) => setManageEggType(e.target.value)}
                           className="w-full appearance-none rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-300/90 focus:bg-white focus:ring-4 focus:ring-sky-500/15"
                         >
-                          <option value="" disabled>
-                            Select egg type
-                          </option>
-                          <option value="Chicken">Chicken</option>
-                          <option value="Duck">Duck</option>
+                          <option value="" disabled>Select egg type</option>
+                          <option value="Chicken">Chicken (21 days)</option>
+                          <option value="Duck">Duck (28 days)</option>
+                          <option value="Quail">Quail (18 days)</option>
+                          <option value="Goose">Goose (30 days)</option>
                         </select>
                       </div>
 
@@ -1256,7 +1482,8 @@ export default function EggBatchesPage() {
                           type="number"
                           min={0}
                           value={manageTotalEggs}
-                          onChange={(e) => setManageTotalEggs(Number(e.target.value))}
+                          onChange={(e) => setManageTotalEggs(e.target.value)}
+                          placeholder="0"
                           className="w-full rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-300/90 focus:bg-white focus:ring-4 focus:ring-sky-500/15"
                         />
                       </div>
@@ -1418,398 +1645,42 @@ export default function EggBatchesPage() {
               </div>
             ) : (
               <div className="mt-5 space-y-4">
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {pagedBatches.map((batch) => (
-                    <article
-                      key={batch.id}
-                      onClick={() => setSelectedBatchId(batch.id)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setSelectedBatchId(batch.id);
-                        }
-                      }}
-                      className={`rounded-3xl bg-white px-4 py-4 shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-sky-500/40 ${
-                        selectedBatchId === batch.id
-                          ? "ring-sky-200"
-                          : "ring-slate-100"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="text-[13px] font-semibold tracking-tight text-slate-900">
-                            {batch?.batchId ? `BATCH-${batch.batchId}` : "BATCH"}
-                          </p>
-                          <p className="mt-0.5 text-[11px] text-slate-500">
-                            {typeof batch?.totalEggs === "number" ? `${batch.totalEggs} eggs total` : "-"}
-                          </p>
-                        </div>
-
-                        <div className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-sky-50 text-sky-600 ring-1 ring-sky-100">
-                          <Box className="h-3.5 w-3.5" />
-                        </div>
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-2 gap-2">
-                        {/* NEW: Egg Status Counts */}
-                        {batch?.counts && (
-                          <>
-                            <div className="rounded-2xl bg-emerald-50/70 px-3 py-2 ring-1 ring-emerald-100/80">
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                                Incubating
-                              </p>
-                              <p className="mt-1 text-base font-semibold tracking-tight text-emerald-700">
-                                {batch.counts.incubating || 0}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl bg-rose-50/70 px-3 py-2 ring-1 ring-rose-100/80">
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                                Dead
-                              </p>
-                              <p className="mt-1 text-base font-semibold tracking-tight text-rose-700">
-                                {batch.counts.dead || 0}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl bg-amber-50/60 px-3 py-2 ring-1 ring-amber-100/80">
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                                Removed
-                              </p>
-                              <p className="mt-1 text-[12px] font-semibold tracking-tight text-amber-700">
-                                {batch.counts.removed || 0}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl bg-sky-50/60 px-3 py-2 ring-1 ring-sky-100/80">
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                                Hatched
-                              </p>
-                              <p className="mt-1 text-[12px] font-semibold tracking-tight text-sky-700">
-                                {batch.counts.hatched || 0}
-                              </p>
-                            </div>
-                          </>
-                        )}
-
-                        {/* Original fields if no counts yet */}
-                        {!batch?.counts && (
-                          <>
-                            <div className="rounded-2xl bg-sky-50/70 px-3 py-2 ring-1 ring-sky-100/80">
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                                Egg Type
-                              </p>
-                              <p className="mt-1 text-base font-semibold tracking-tight text-slate-900">
-                                {batch?.eggType ? String(batch.eggType) : "-"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl bg-sky-50/70 px-3 py-2 ring-1 ring-sky-100/80">
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                                Status
-                              </p>
-                              <p className="mt-1 text-base font-semibold tracking-tight text-slate-900">
-                                {batch?.status ? String(batch.status) : "-"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl bg-amber-50/60 px-3 py-2 ring-1 ring-amber-100/80">
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                                Start
-                              </p>
-                              <p className="mt-1 text-[12px] font-semibold tracking-tight text-slate-900">
-                                {batch._startDate ? formatShortDate(batch._startDate) : "-"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl bg-amber-50/60 px-3 py-2 ring-1 ring-amber-100/80">
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                                Hatch
-                              </p>
-                              <p className="mt-1 text-[12px] font-semibold tracking-tight text-slate-900">
-                                {batch?._derived?.hatchingDate
-                                  ? formatShortDate(batch._derived.hatchingDate)
-                                  : "-"}
-                              </p>
-                            </div>
-                          </>
-                        )}
-                      </div>
-
-                      <div className="mt-2.5 flex items-center justify-between rounded-2xl bg-slate-50 px-3.5 py-2.5 ring-1 ring-slate-100">
-                        <span className="text-[11px] font-medium text-slate-600">Days left</span>
-                        <span className="text-[11px] font-semibold text-slate-900">
-                          {typeof batch?._derived?.daysLeft === "number" ? batch._derived.daysLeft : "-"}
-                        </span>
-                      </div>
-
-                      {/* Track Hatch Button - Only show for active batches */}
-                      {batch?.status !== "completed" && (
-                        <>
-                          {/* Visual Incubation Progress Bar */}
-                          <div className="mt-3 rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <Activity className="h-4 w-4 text-indigo-600" />
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                                  Incubation Progress
-                                </p>
-                              </div>
-                              <span className="text-xs font-semibold text-indigo-600">
-                                Day {batch._derived?.daysPassed || 0} of {batch._derived?.totalDays || 21}
-                              </span>
-                            </div>
-                            
-                            {/* Progress Bar */}
-                            <div className="relative h-3 w-full overflow-hidden rounded-full bg-slate-200">
-                              <div 
-                                className={`absolute left-0 top-0 h-full bg-gradient-to-r ${getProgressColor(batch._derived?.daysPassed || 0, batch._derived?.totalDays || 21)} transition-all duration-500`}
-                                style={{ width: `${batch._derived?.progress || 0}%` }}
-                              />
-                            </div>
-                            
-                            {/* Progress Stats */}
-                            <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                              <div className="rounded-lg bg-white px-2 py-1.5 ring-1 ring-slate-100">
-                                <p className="text-[9px] text-slate-500">Days Left</p>
-                                <p className="text-sm font-semibold text-slate-900">{batch._derived?.daysLeft || 0}</p>
-                              </div>
-                              <div className="rounded-lg bg-white px-2 py-1.5 ring-1 ring-slate-100">
-                                <p className="text-[9px] text-slate-500">Progress</p>
-                                <p className="text-sm font-semibold text-indigo-600">{batch._derived?.progress || 0}%</p>
-                              </div>
-                              <div className="rounded-lg bg-white px-2 py-1.5 ring-1 ring-slate-100">
-                                <p className="text-[9px] text-slate-500">Status</p>
-                                {controlConfig?.enabled?.turner ? (
-                                  <p className="text-sm font-semibold text-emerald-600 capitalize flex items-center gap-1">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                    Active
-                                  </p>
-                                ) : (
-                                  <p className="text-sm font-semibold text-slate-500 capitalize flex items-center gap-1">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-                                    Not Active
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Smart Incubation Alerts */}
-                          <div className="mt-3">
-                            {(() => {
-                              const alerts = getIncubationAlerts(batch._derived?.daysPassed || 0, batch?.eggType);
-                              if (alerts.length === 0) return null;
-                              
-                              return (
-                                <div className="rounded-xl bg-amber-50/70 px-4 py-3 ring-1 ring-amber-100/70">
-                                  <div className="flex items-center gap-2 mb-3">
-                                    <Bell className="h-4 w-4 text-amber-600" />
-                                    <p className="text-[10px] font-bold uppercase tracking-widest text-amber-700">
-                                      Incubation Alerts
-                                    </p>
-                                  </div>
-                                  
-                                  <div className="space-y-2">
-                                    {alerts.slice(0, 3).map((alert, idx) => (
-                                      <div 
-                                        key={idx}
-                                        className={`rounded-lg p-2.5 ${
-                                          alert.isNew 
-                                            ? 'bg-white ring-2 ring-amber-200' 
-                                            : alert.isUpcoming 
-                                              ? 'bg-amber-50/50 ring-1 ring-amber-100/50' 
-                                              : 'bg-white ring-1 ring-slate-100'
-                                        }`}
-                                      >
-                                        <div className="flex items-start gap-2">
-                                          <span className="text-lg">{alert.icon}</span>
-                                          <div className="flex-1">
-                                            <div className="flex items-center gap-2">
-                                              <p className="text-xs font-semibold text-slate-900">{alert.title}</p>
-                                              {alert.priority === 'critical' && (
-                                                <span className="inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-medium text-red-700">
-                                                  CRITICAL
-                                                </span>
-                                              )}
-                                              {alert.priority === 'high' && (
-                                                <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-medium text-amber-700">
-                                                  HIGH
-                                                </span>
-                                              )}
-                                            </div>
-                                            <p className="mt-1 text-[10px] leading-tight text-slate-600">{alert.message}</p>
-                                            {alert.isUpcoming && (
-                                              <p className="mt-1 text-[9px] font-medium text-amber-600">
-                                                In {alert.daysUntil} {alert.daysUntil === 1 ? 'day' : 'days'}
-                                              </p>
-                                            )}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </div>
-
-                          {/* Hatch Prediction */}
-                          <div className="mt-3">
-                            {(() => {
-                              const prediction = getHatchPrediction(
-                                batch._derived?.daysPassed || 0,
-                                batch._derived?.totalDays || 21,
-                                batch?.eggsHatched || 0,
-                                batch?.totalEggs || 0
-                              );
-                              
-                              const colorMap = {
-                                blue: 'from-sky-50 to-blue-50 ring-sky-100 text-sky-700',
-                                cyan: 'from-cyan-50 to-sky-50 ring-cyan-100 text-cyan-700',
-                                green: 'from-emerald-50 to-green-50 ring-emerald-100 text-emerald-700',
-                                orange: 'from-orange-50 to-amber-50 ring-orange-100 text-orange-700',
-                                amber: 'from-amber-50 to-yellow-50 ring-amber-100 text-amber-700',
-                                emerald: 'from-emerald-50 to-teal-50 ring-emerald-100 text-emerald-700',
-                                gray: 'from-slate-50 to-gray-50 ring-slate-100 text-slate-700',
-                              };
-                              
-                              return (
-                                <div className={`rounded-xl bg-gradient-to-br px-4 py-3 ring-1 ${colorMap[prediction.color] || colorMap.blue}`}>
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <Target className="h-4 w-4" />
-                                    <p className="text-[10px] font-bold uppercase tracking-widest opacity-80">
-                                      Hatch Prediction
-                                    </p>
-                                  </div>
-                                  
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <p className="text-[9px] opacity-70">Prediction</p>
-                                      <p className="text-sm font-bold">{prediction.prediction}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[9px] opacity-70">Est. Hatch Rate</p>
-                                      <p className="text-sm font-bold">{prediction.estimatedRate || 'N/A'}</p>
-                                    </div>
-                                  </div>
-                                  
-                                  <div className="mt-2 rounded-lg bg-white/70 px-2.5 py-2">
-                                    <p className="text-[10px] leading-relaxed">{prediction.message}</p>
-                                    <div className="mt-1.5 flex items-center gap-1.5">
-                                      <Clock className="h-3 w-3 opacity-60" />
-                                      <p className="text-[9px] opacity-70">Confidence: <span className="font-semibold">{prediction.confidence}</span></p>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openHatchModal(batch);
-                            }}
-                            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                          >
-                            <ClipboardCheck className="h-4 w-4" />
-                            Track Hatch
-                          </button>
-                        </>
-                      )}
-
-                      {/* Completed Badge - Show for completed batches */}
-                      {batch?.status === "completed" && (
-                        <div className="mt-3 rounded-xl bg-emerald-50 px-4 py-3 ring-1 ring-emerald-100">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Egg className="h-4 w-4 text-emerald-600" />
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">
-                              Hatch Results
-                            </p>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div>
-                              <p className="text-[9px] text-slate-500">Hatched</p>
-                              <p className="text-[11px] font-semibold text-emerald-600">{batch.hatchedEggs || 0}</p>
-                            </div>
-                            <div>
-                              <p className="text-[9px] text-slate-500">Failed</p>
-                              <p className="text-[11px] font-semibold text-rose-600">{batch.failedToHatch || 0}</p>
-                            </div>
-                            <div>
-                              <p className="text-[9px] text-slate-500">Hatch Rate</p>
-                              <p className="text-[11px] font-semibold text-indigo-600">{(batch.hatchRate || 0).toFixed(1)}%</p>
-                            </div>
-                            <div>
-                              <p className="text-[9px] text-slate-500">Added to Inventory</p>
-                              <p className="text-[11px] font-semibold text-sky-600">{batch.hatchedEggs || 0}</p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* AI Recommendation Section - Collapsible */}
-                      <div className="mt-3">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowRecommendations(prev => ({
-                              ...prev,
-                              [batch.id]: !prev[batch.id],
-                            }));
-                          }}
-                          className="group inline-flex w-full items-center justify-between gap-2 rounded-2xl bg-gradient-to-r from-indigo-50/80 via-purple-50/60 to-pink-50/40 px-4 py-2.5 ring-1 ring-indigo-100/80 transition hover:bg-gradient-to-r hover:from-indigo-50 hover:via-purple-50 hover:to-pink-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                        >
-                          <div className="flex items-center gap-2">
-                            <div className="inline-flex h-5 w-5 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600">
-                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                              </svg>
-                            </div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600">
-                              AI Recommendation
-                            </p>
-                          </div>
-                          <svg 
-                            className={`h-4 w-4 text-indigo-600 transition-transform duration-200 ${showRecommendations[batch.id] ? 'rotate-180' : ''}`}
-                            fill="none" 
-                            viewBox="0 0 24 24" 
-                            stroke="currentColor"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </button>
-
-                        {/* Expanded Content */}
-                        {showRecommendations[batch.id] && (
-                          <div className="mt-2 rounded-2xl bg-gradient-to-br from-indigo-50/80 via-purple-50/60 to-pink-50/40 px-4 py-3 ring-1 ring-indigo-100/80 backdrop-blur-sm">
-                            <div className="space-y-2">
-                              <div className="grid grid-cols-2 gap-2 text-xs">
-                                <div className="flex flex-col">
-                                  <span className="text-[9px] font-medium text-slate-500 uppercase tracking-wide">Temperature</span>
-                                  <span className="text-[11px] font-semibold text-slate-900">{getAIRecommendation(batch.eggType).temperature}</span>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-[9px] font-medium text-slate-500 uppercase tracking-wide">Humidity</span>
-                                  <span className="text-[11px] font-semibold text-slate-900">{getAIRecommendation(batch.eggType).humidity}</span>
-                                </div>
-                              </div>
-                              
-                              <div className="rounded-xl bg-white/70 px-3 py-2 ring-1 ring-indigo-50/50">
-                                <p className="text-[10px] leading-relaxed text-slate-700">
-                                  {getAIRecommendation(batch.eggType).text}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </article>
-                  ))}
+                {/* Table */}
+                <div className="overflow-x-auto rounded-2xl ring-1 ring-slate-100">
+                  <table className="w-full min-w-[600px] text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 text-left">
+                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Batch ID</th>
+                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Egg Type</th>
+                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Total</th>
+                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Progress</th>
+                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Days Left</th>
+                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Status</th>
+                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Device</th>
+                        <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-400"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {pagedBatches.map((batch) => (
+                        <BatchTableRow
+                          key={batch.id}
+                          batch={batch}
+                          isSelected={selectedBatchId === batch.id}
+                          onSelect={setSelectedBatchId}
+                          openHatchModal={openHatchModal}
+                          getProgressColor={getProgressColor}
+                          getIncubationAlerts={getIncubationAlerts}
+                          getHatchPrediction={getHatchPrediction}
+                          getAIRecommendation={getAIRecommendation}
+                          showRecommendations={showRecommendations}
+                          setShowRecommendations={setShowRecommendations}
+                          controlConfig={controlConfig}
+                          onEdit={openEditDirect}
+                          onDelete={openDeleteDirect}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
 
                 <div className="flex flex-col gap-3 rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100 sm:flex-row sm:items-center sm:justify-between">
@@ -1920,12 +1791,22 @@ export default function EggBatchesPage() {
                       <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
                         Batch ID / Name
                       </label>
-                      <input
-                        value={batchId}
-                        onChange={(e) => setBatchId(e.target.value)}
-                        placeholder="e.g. 2026-003"
-                        className="w-full rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-300/90 focus:bg-white focus:ring-4 focus:ring-sky-500/15"
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          value={batchId}
+                          onChange={(e) => setBatchId(e.target.value)}
+                          placeholder="e.g. CK-250101-A3F2"
+                          className="flex-1 rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-300/90 focus:bg-white focus:ring-4 focus:ring-sky-500/15"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setBatchId(generateBatchId(eggType || "chicken"))}
+                          title="Auto-generate batch ID"
+                          className="inline-flex items-center gap-1.5 rounded-2xl bg-gradient-to-r from-violet-600 to-purple-600 px-3 py-2.5 text-xs font-semibold text-white hover:from-violet-700 hover:to-purple-700 transition"
+                        >
+                          <Wand2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="space-y-1.5">
@@ -1937,11 +1818,11 @@ export default function EggBatchesPage() {
                         onChange={(e) => setEggType(e.target.value)}
                         className="w-full appearance-none rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-300/90 focus:bg-white focus:ring-4 focus:ring-sky-500/15"
                       >
-                        <option value="" disabled>
-                          Select egg type
-                        </option>
-                        <option value="Chicken">Chicken</option>
-                        <option value="Duck">Duck</option>
+                        <option value="" disabled>Select egg type</option>
+                        <option value="Chicken">Chicken (21 days)</option>
+                        <option value="Duck">Duck (28 days)</option>
+                        <option value="Quail">Quail (18 days)</option>
+                        <option value="Goose">Goose (30 days)</option>
                       </select>
                     </div>
 
@@ -1953,7 +1834,8 @@ export default function EggBatchesPage() {
                         type="number"
                         min={0}
                         value={totalEggs}
-                        onChange={(e) => setTotalEggs(Number(e.target.value))}
+                        onChange={(e) => setTotalEggs(e.target.value)}
+                        placeholder="0"
                         className="w-full rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-300/90 focus:bg-white focus:ring-4 focus:ring-sky-500/15"
                       />
                     </div>
@@ -1969,6 +1851,29 @@ export default function EggBatchesPage() {
                         className="w-full rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-300/90 focus:bg-white focus:ring-4 focus:ring-sky-500/15"
                       />
                     </div>
+
+                    {userDevices.length > 0 && (
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                          Assign to Device <span className="font-normal text-slate-400 normal-case">(optional)</span>
+                        </label>
+                        <select
+                          value={selectedDeviceId}
+                          onChange={(e) => {
+                            const deviceId = e.target.value;
+                            setSelectedDeviceId(deviceId);
+                            const device = userDevices.find((d) => d.id === deviceId);
+                            setSelectedDeviceName(device?.name || device?.deviceName || device?.id || "");
+                          }}
+                          className="w-full appearance-none rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-300/90 focus:bg-white focus:ring-4 focus:ring-sky-500/15"
+                        >
+                          <option value="">No device assigned</option>
+                          {userDevices.map((d) => (
+                            <option key={d.id} value={d.id}>{d.name || d.deviceName || d.id}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
 
                     {saveError ? (
                       <div className="rounded-2xl border border-rose-100/80 bg-rose-50/80 px-4 py-3 text-xs font-medium text-rose-700">
@@ -2007,15 +1912,15 @@ export default function EggBatchesPage() {
 
 // Track Hatch Modal Component
 function TrackHatchModal({ isOpen, onClose, batch, onSubmit, isSubmitting }) {
-  const [eggsHatched, setEggsHatched] = useState(0);
-  const [eggsFailed, setEggsFailed] = useState(0);
+  const [eggsHatched, setEggsHatched] = useState("");
+  const [eggsFailed, setEggsFailed] = useState("");
   const [hatchDate, setHatchDate] = useState(new Date().toISOString().split("T")[0]);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (isOpen && batch) {
-      setEggsHatched(Number(batch.hatchedEggs || 0));
-      setEggsFailed(Number(batch.failedToHatch || 0));
+      setEggsHatched(batch.hatchedEggs ? String(Number(batch.hatchedEggs)) : "");
+      setEggsFailed(batch.failedToHatch ? String(Number(batch.failedToHatch)) : "");
       const hatch = batch.hatchingDate?.toDate ? batch.hatchingDate.toDate() : new Date();
       setHatchDate(hatch.toISOString().split("T")[0]);
       setError("");
@@ -2113,7 +2018,7 @@ function TrackHatchModal({ isOpen, onClose, batch, onSubmit, isSubmitting }) {
                   type="number"
                   min={0}
                   value={eggsHatched}
-                  onChange={(e) => setEggsHatched(Number(e.target.value))}
+                  onChange={(e) => setEggsHatched(e.target.value)}
                   placeholder="e.g. 82"
                   className="w-full rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-emerald-300/90 focus:bg-white focus:ring-4 focus:ring-emerald-500/15"
                 />
@@ -2127,7 +2032,7 @@ function TrackHatchModal({ isOpen, onClose, batch, onSubmit, isSubmitting }) {
                   type="number"
                   min={0}
                   value={eggsFailed}
-                  onChange={(e) => setEggsFailed(Number(e.target.value))}
+                  onChange={(e) => setEggsFailed(e.target.value)}
                   placeholder="e.g. 18"
                   className="w-full rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-rose-300/90 focus:bg-white focus:ring-4 focus:ring-rose-500/15"
                 />

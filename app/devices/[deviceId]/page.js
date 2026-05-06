@@ -25,6 +25,8 @@ import {
   Droplet,
   Wind,
   RotateCcw,
+  Package,
+  ArchiveRestore,
   AlertTriangle,
 } from "lucide-react";
 
@@ -100,6 +102,8 @@ export default function DevicePage() {
     { href: `/devices/${deviceId}/batches`, label: "Egg Batches", icon: Egg },
     { href: `/devices/${deviceId}/scanner`, label: "Scanner", icon: ScanLine },
     { href: `/devices/${deviceId}/history`, label: "History", icon: History },
+    { href: `/devices/${deviceId}/batch-history`, label: "Batch History", icon: ArchiveRestore },
+    { href: `/devices/${deviceId}/chick-inventory`, label: "Chick Inventory", icon: Package },
     { href: `/devices/${deviceId}/settings`, label: "Settings", icon: Settings },
   ];
 

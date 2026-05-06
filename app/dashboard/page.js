@@ -3,7 +3,8 @@
 
 import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { auth, firestore } from "@/lib/firebase";
+import { getDocs, collection, query, where } from "firebase/firestore";
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 import { useUserDevices } from "@/lib/useUserDevices";
@@ -17,12 +18,192 @@ import {
   Droplets,
   Cpu,
   ChevronRight,
+  ChevronLeft,
   Wifi,
   WifiOff,
   AlertTriangle,
   X,
   Loader2,
+  CalendarDays,
+  Egg,
+  Filter,
 } from "lucide-react";
+
+const CANDLING_SCHEDULES = { Chicken:[7,14,18], Duck:[7,18,25], Quail:[5,12,15], Goose:[7,14,21], Turkey:[7,14,21] };
+const INCUBATION_DAYS = { Chicken:21, Duck:28, Quail:18, Goose:30, Turkey:28 };
+
+const toYMD = (d) => d instanceof Date ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : null;
+
+function buildCalendarEvents(batches) {
+  const map = {};
+  for (const b of batches) {
+    const start = b.startDate?.toDate ? b.startDate.toDate() : b.startDate ? new Date(b.startDate) : null;
+    if (!start || isNaN(start)) continue;
+    const eggType = b.eggType || "Chicken";
+    const incDays = INCUBATION_DAYS[eggType] || 21;
+    const candleDays = CANDLING_SCHEDULES[eggType] || [];
+    const hatchDate = new Date(start.getTime() + incDays * 86400000);
+    const add = (date, type) => {
+      const k = toYMD(date);
+      if (!k) return;
+      if (!map[k]) map[k] = [];
+      map[k].push({ type, batch: b, date });
+    };
+    add(start, "start");
+    candleDays.forEach((day) => add(new Date(start.getTime() + day * 86400000), "candle"));
+    add(hatchDate, "hatch");
+  }
+  return map;
+}
+
+function EggCalendar({ batches, batchFilter, onFilterChange }) {
+  const today = new Date();
+  const [month, setMonth] = useState(today.getMonth());
+  const [year, setYear] = useState(today.getFullYear());
+  const [popoverDate, setPopoverDate] = useState(null);
+
+  const filtered = batchFilter === "all" ? batches : batches.filter((b) => b.id === batchFilter);
+  const eventMap = buildCalendarEvents(filtered);
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayYMD = toYMD(today);
+
+  const prevMonth = () => { if (month === 0) { setMonth(11); setYear(y => y-1); } else setMonth(m => m-1); };
+  const nextMonth = () => { if (month === 11) { setMonth(0); setYear(y => y+1); } else setMonth(m => m+1); };
+
+  const monthName = new Date(year, month, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+  // Upcoming events for next 30 days
+  const upcoming = [];
+  for (let i = 0; i <= 30; i++) {
+    const d = new Date(today.getTime() + i * 86400000);
+    const k = toYMD(d);
+    if (eventMap[k]) {
+      for (const ev of eventMap[k]) {
+        upcoming.push({ ...ev, dateKey: k, dateObj: d });
+      }
+    }
+  }
+
+  const TYPE_COLORS = { start: "bg-teal-400", candle: "bg-amber-400", hatch: "bg-emerald-500" };
+  const TYPE_LABELS = { start: "Batch Start", candle: "Candling Day", hatch: "Hatch Date" };
+  const TYPE_BG = { start: "bg-teal-50 text-teal-700 ring-teal-100", candle: "bg-amber-50 text-amber-700 ring-amber-100", hatch: "bg-emerald-50 text-emerald-700 ring-emerald-100" };
+
+  return (
+    <div className="rounded-3xl bg-white shadow-sm ring-1 ring-slate-100 overflow-hidden">
+      <div className="flex items-center justify-between px-5 pt-5 pb-3">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-50 text-[#004a87]">
+            <CalendarDays className="h-4 w-4" />
+          </div>
+          <h2 className="text-sm font-bold text-slate-900">Incubation Calendar</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <Filter className="h-3.5 w-3.5 text-slate-400" />
+          <select value={batchFilter} onChange={(e) => onFilterChange(e.target.value)}
+            className="rounded-xl border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700 outline-none focus:border-sky-300">
+            <option value="all">All Batches</option>
+            {batches.map((b) => <option key={b.id} value={b.id}>{b.batchId || b.id}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="grid gap-0 lg:grid-cols-[1fr_260px]">
+        {/* Calendar grid */}
+        <div className="px-4 pb-4">
+          <div className="flex items-center justify-between mb-3">
+            <button onClick={prevMonth} className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 transition">
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="text-xs font-semibold text-slate-900">{monthName}</span>
+            <button onClick={nextMonth} className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 transition">
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-7 gap-0.5" onClick={(e) => { if (e.target === e.currentTarget) setPopoverDate(null); }}>
+            {["Su","Mo","Tu","We","Th","Fr","Sa"].map((d) => (
+              <div key={d} className="py-1 text-center text-[9px] font-bold uppercase tracking-widest text-slate-400">{d}</div>
+            ))}
+            {Array.from({ length: firstDay }).map((_, i) => <div key={`e${i}`} />)}
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+              const dayNum = i + 1;
+              const dateKey = `${year}-${String(month+1).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
+              const events = eventMap[dateKey] || [];
+              const isToday = dateKey === todayYMD;
+              const types = [...new Set(events.map((e) => e.type))];
+              const isPopover = popoverDate === dateKey;
+              return (
+                <div key={dayNum} className="relative">
+                  <div onClick={() => events.length > 0 ? setPopoverDate(isPopover ? null : dateKey) : setPopoverDate(null)}
+                    className={`relative flex flex-col items-center rounded-lg py-1.5 transition cursor-pointer ${
+                      isToday ? "bg-[#004a87] text-white" :
+                      events.length > 0 ? "bg-sky-50/80 ring-1 ring-sky-100 hover:ring-sky-300" : "hover:bg-slate-50"
+                    }`}>
+                    <span className={`text-[11px] font-semibold leading-none ${ isToday ? "text-white" : "text-slate-700" }`}>{dayNum}</span>
+                    {types.length > 0 && (
+                      <div className="mt-1 flex gap-0.5 justify-center">
+                        {types.map((t) => <span key={t} className={`inline-block h-1.5 w-1.5 rounded-full ${isToday ? "bg-white" : TYPE_COLORS[t]}`} />)}
+                      </div>
+                    )}
+                  </div>
+                  {isPopover && events.length > 0 && (
+                    <div className="absolute z-20 top-full left-1/2 -translate-x-1/2 mt-1 w-52 rounded-2xl bg-white shadow-xl ring-1 ring-slate-200 p-3 space-y-1.5">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">
+                        {new Date(year, month, dayNum).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
+                      </p>
+                      {events.map((ev, ei) => (
+                        <div key={ei} className={`flex items-start gap-2 rounded-xl px-2.5 py-2 ring-1 ${TYPE_BG[ev.type]}`}>
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-semibold">{TYPE_LABELS[ev.type]}</p>
+                            <p className="text-[10px] opacity-70 truncate">{ev.batch.batchId || ev.batch.id}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Legend */}
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            {[["start","Batch Start"],["candle","Candling"],["hatch","Hatch"]].map(([t,l]) => (
+              <div key={t} className="flex items-center gap-1.5">
+                <span className={`inline-block h-2 w-2 rounded-full ${TYPE_COLORS[t]}`} />
+                <span className="text-[10px] text-slate-400">{l}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Upcoming events */}
+        <div className="border-t border-slate-100 px-4 py-4 lg:border-l lg:border-t-0">
+          <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">Next 30 Days</p>
+          {upcoming.length === 0 ? (
+            <div className="flex flex-col items-center py-6 text-center">
+              <Egg className="h-8 w-8 text-slate-200 mb-2" />
+              <p className="text-[11px] text-slate-400">No upcoming events</p>
+            </div>
+          ) : (
+            <div className="max-h-64 overflow-y-auto pr-1 space-y-2" style={{ scrollbarWidth: "thin" }}>
+              {upcoming.map((ev, idx) => (
+                <div key={idx} className={`flex items-start gap-2 rounded-xl px-3 py-2 ring-1 ${TYPE_BG[ev.type]}`}>
+                  <CalendarDays className="mt-0.5 h-3 w-3 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold">{TYPE_LABELS[ev.type]}</p>
+                    <p className="text-[10px] leading-tight opacity-70 truncate">{ev.batch.batchId || ev.batch.id} · {ev.dateObj.toLocaleDateString("en-US",{month:"short",day:"numeric"})}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Device card component with notification hooks
 function DeviceCard({ owned, liveDevice, uid, onRemove }) {
@@ -161,6 +342,11 @@ export default function DashboardPage() {
   const [nicknameInput, setNicknameInput] = useState("");
   const [addError, setAddError] = useState("");
   const [isAdding, setIsAdding] = useState(false);
+  const [allBatches, setAllBatches] = useState([]);
+  const [batchFilter, setBatchFilter] = useState("all");
+  const [showRemoveModal, setShowRemoveModal] = useState(false);
+  const [pendingRemoveDevice, setPendingRemoveDevice] = useState(null);
+  const [activeTab, setActiveTab] = useState("incubators"); // "incubators" | "calendar"
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -174,6 +360,21 @@ export default function DashboardPage() {
 
   const ownedIds = ownedDevices.map((d) => d.id);
   const { devices: liveDevices } = useIncubatorDevices(ownedIds);
+
+  // Load batches for all owned devices
+  useEffect(() => {
+    if (!ownedIds.length) { setAllBatches([]); return; }
+    const q = query(collection(firestore, "egg_batches"), where("deviceId", "in", ownedIds.slice(0, 10)));
+    getDocs(q).then((snap) => {
+      setAllBatches(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((b) => b.status !== "completed"));
+    }).catch(() => {});
+  }, [JSON.stringify(ownedIds)]);
+
+  // Trigger candling schedule check
+  useEffect(() => {
+    if (!uid) return;
+    fetch(`/api/alerts/candling-check?uid=${uid}`).catch(() => {});
+  }, [uid]);
 
   const handleAddDevice = async (e) => {
     e.preventDefault();
@@ -191,11 +392,18 @@ export default function DashboardPage() {
     }
   };
 
-  const handleRemove = async (deviceId, nickname) => {
-    if (!confirm(`Remove "${nickname}" from your account?`)) return;
+  const handleRemove = (deviceId, nickname) => {
+    setPendingRemoveDevice({ id: deviceId, nickname });
+    setShowRemoveModal(true);
+  };
+
+  const confirmRemove = async () => {
+    if (!pendingRemoveDevice) return;
     try {
-      await removeDevice(deviceId);
+      await removeDevice(pendingRemoveDevice.id);
     } catch {}
+    setShowRemoveModal(false);
+    setPendingRemoveDevice(null);
   };
 
   const openAddModal = () => {
@@ -230,61 +438,87 @@ export default function DashboardPage() {
             </button>
           </div>
 
+          {/* Tabs */}
+          <div className="flex gap-1 rounded-xl bg-white/60 p-1 ring-1 ring-slate-200/70 shadow-sm backdrop-blur">
+            <button
+              onClick={() => setActiveTab("incubators")}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${activeTab === "incubators" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+            >
+              <Cpu className="h-3.5 w-3.5" />My Incubators
+            </button>
+            <button
+              onClick={() => setActiveTab("calendar")}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${activeTab === "calendar" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+            >
+              <CalendarDays className="h-3.5 w-3.5" />Calendar
+            </button>
+          </div>
+
           {devicesError && (
             <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-xs text-rose-700">
               {devicesError}
             </div>
           )}
 
-          {devicesLoading && (
-            <div className="grid auto-rows-fr gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {[1, 2].map((i) => (
-                <div key={i} className="h-52 animate-pulse rounded-2xl bg-slate-100" />
-              ))}
-            </div>
+          {/* My Incubators Tab */}
+          {activeTab === "incubators" && (
+            <>
+              {devicesLoading && (
+                <div className="grid auto-rows-fr gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="h-52 animate-pulse rounded-2xl bg-slate-100" />
+                  ))}
+                </div>
+              )}
+
+              {!devicesLoading && ownedDevices.length === 0 && (
+                <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-slate-200 bg-white px-8 py-16 text-center">
+                  <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-sky-50 text-sky-400 ring-1 ring-sky-100">
+                    <Cpu className="h-10 w-10" />
+                  </div>
+                  <h2 className="text-base font-semibold text-slate-900">No incubators yet</h2>
+                  <p className="mt-2 max-w-xs text-sm text-slate-500">
+                    Power on your incubator device and connect it to WiFi. The Device ID will appear on its local web configuration page at 192.168.4.1.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={openAddModal}
+                    className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-[#004a87] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#003d72] active:scale-95"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Your First Incubator
+                  </button>
+                </div>
+              )}
+
+              {!devicesLoading && ownedDevices.length > 0 && (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {ownedDevices.map((owned) => (
+                    <DeviceCard
+                      key={owned.id}
+                      owned={owned}
+                      liveDevice={liveDevices[owned.id] || {}}
+                      uid={uid}
+                      onRemove={handleRemove}
+                    />
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={openAddModal}
+                    className="flex h-full min-h-[320px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-transparent px-6 py-10 text-slate-400 transition hover:border-[#004a87] hover:text-[#004a87] hover:bg-sky-50/30"
+                  >
+                    <Plus className="h-8 w-8 mb-2" />
+                    <span className="text-xs font-medium">Add Incubator</span>
+                  </button>
+                </div>
+              )}
+            </>
           )}
 
-          {!devicesLoading && ownedDevices.length === 0 && (
-            <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-slate-200 bg-white px-8 py-16 text-center">
-              <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-sky-50 text-sky-400 ring-1 ring-sky-100">
-                <Cpu className="h-10 w-10" />
-              </div>
-              <h2 className="text-base font-semibold text-slate-900">No incubators yet</h2>
-              <p className="mt-2 max-w-xs text-sm text-slate-500">
-                Power on your incubator device and connect it to WiFi. The Device ID will appear on its local web configuration page at 192.168.4.1.
-              </p>
-              <button
-                type="button"
-                onClick={openAddModal}
-                className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-[#004a87] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#003d72] active:scale-95"
-              >
-                <Plus className="h-4 w-4" />
-                Add Your First Incubator
-              </button>
-            </div>
-          )}
-
-          {!devicesLoading && ownedDevices.length > 0 && (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {ownedDevices.map((owned) => (
-                <DeviceCard
-                  key={owned.id}
-                  owned={owned}
-                  liveDevice={liveDevices[owned.id] || {}}
-                  uid={uid}
-                  onRemove={handleRemove}
-                />
-              ))}
-
-              <button
-                type="button"
-                onClick={openAddModal}
-                className="flex h-full min-h-[320px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-transparent px-6 py-10 text-slate-400 transition hover:border-[#004a87] hover:text-[#004a87] hover:bg-sky-50/30"
-              >
-                <Plus className="h-8 w-8 mb-2" />
-                <span className="text-xs font-medium">Add Incubator</span>
-              </button>
-            </div>
+          {/* Calendar Tab */}
+          {activeTab === "calendar" && (
+            <EggCalendar batches={allBatches} batchFilter={batchFilter} onFilterChange={setBatchFilter} />
           )}
         </main>
       </div>
@@ -369,6 +603,25 @@ export default function DashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Remove Device Confirm Modal */}
+      {showRemoveModal && pendingRemoveDevice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-xs rounded-3xl bg-white p-6 shadow-2xl ring-1 ring-slate-200">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 ring-1 ring-rose-100">
+              <X className="h-6 w-6" />
+            </div>
+            <h3 className="mt-4 text-base font-bold text-slate-900">Remove Incubator?</h3>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">
+              Remove <span className="font-semibold text-slate-900">"{pendingRemoveDevice.nickname}"</span> from your account? The device data will remain but it will no longer appear in your dashboard.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button onClick={() => { setShowRemoveModal(false); setPendingRemoveDevice(null); }} className="flex-1 rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
+              <button onClick={confirmRemove} className="flex-1 rounded-xl bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-700">Remove</button>
+            </div>
           </div>
         </div>
       )}
