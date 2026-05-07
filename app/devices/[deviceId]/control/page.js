@@ -12,6 +12,7 @@ import { useNotificationPreferences } from "@/lib/useNotificationPreferences";
 import { useDeviceHistoryLogger } from "@/lib/useDeviceHistoryLogger";
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
+import BreadcrumbNav from "@/components/BreadcrumbNav";
 import Link from "next/link";
 import { DotLottieReact } from "@lottiefiles/dotlottie-react";
 import { ChevronLeft, Loader2, Radio, AlertTriangle, WifiOff } from "lucide-react";
