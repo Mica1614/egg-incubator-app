@@ -91,7 +91,7 @@ function EggCalendar({ batches, batchFilter, onFilterChange }) {
   const TYPE_BG = { start: "bg-teal-50 text-teal-700 ring-teal-100", candle: "bg-amber-50 text-amber-700 ring-amber-100", hatch: "bg-emerald-50 text-emerald-700 ring-emerald-100" };
 
   return (
-    <div className="rounded-3xl bg-white shadow-sm ring-1 ring-slate-100 overflow-hidden">
+    <div className="rounded-3xl bg-white shadow-sm ring-1 ring-slate-100">
       <div className="flex items-center justify-between px-5 pt-5 pb-3">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-50 text-[#004a87]">
@@ -133,6 +133,8 @@ function EggCalendar({ batches, batchFilter, onFilterChange }) {
               const isToday = dateKey === todayYMD;
               const types = [...new Set(events.map((e) => e.type))];
               const isPopover = popoverDate === dateKey;
+              const col = (firstDay + i) % 7; // 0=Sun … 6=Sat
+              const popoverAlign = col <= 1 ? "left-0" : col >= 5 ? "right-0" : "left-1/2 -translate-x-1/2";
               return (
                 <div key={dayNum} className="relative">
                   <div onClick={() => events.length > 0 ? setPopoverDate(isPopover ? null : dateKey) : setPopoverDate(null)}
@@ -148,18 +150,20 @@ function EggCalendar({ batches, batchFilter, onFilterChange }) {
                     )}
                   </div>
                   {isPopover && events.length > 0 && (
-                    <div className="absolute z-20 top-full left-1/2 -translate-x-1/2 mt-1 w-52 rounded-2xl bg-white shadow-xl ring-1 ring-slate-200 p-3 space-y-1.5">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">
+                    <div className={`absolute z-30 top-full mt-1 w-52 rounded-2xl bg-white shadow-xl ring-1 ring-slate-200 p-3 ${popoverAlign}`}>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">
                         {new Date(year, month, dayNum).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
                       </p>
-                      {events.map((ev, ei) => (
-                        <div key={ei} className={`flex items-start gap-2 rounded-xl px-2.5 py-2 ring-1 ${TYPE_BG[ev.type]}`}>
-                          <div className="min-w-0">
-                            <p className="text-[10px] font-semibold">{TYPE_LABELS[ev.type]}</p>
-                            <p className="text-[10px] opacity-70 truncate">{ev.batch.batchId || ev.batch.id}</p>
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto pr-0.5">
+                        {events.map((ev, ei) => (
+                          <div key={ei} className={`flex items-start gap-2 rounded-xl px-2.5 py-2 ring-1 ${TYPE_BG[ev.type]}`}>
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-semibold">{TYPE_LABELS[ev.type]}</p>
+                              <p className="text-[10px] opacity-70 truncate">{ev.batch.batchId || ev.batch.id}</p>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
