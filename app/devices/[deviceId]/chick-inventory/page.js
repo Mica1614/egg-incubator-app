@@ -157,6 +157,20 @@ export default function DeviceChickInventoryPage() {
   const availableItems = filteredInventory.filter((i) => (i.available_chicks || 0) > 0);
   const soldOutItems = filteredInventory.filter((i) => (i.available_chicks || 0) <= 0);
 
+  // Define filteredSales BEFORE using it in pagination
+  const filteredSales = useMemo(() => {
+    let s = [...sales];
+    if (dateFrom) s = s.filter((x) => {
+      const d = toDate(x.sale_date) ?? toDate(x.saleDate) ?? toDate(x.createdAt);
+      return d && d >= new Date(dateFrom);
+    });
+    if (dateTo) s = s.filter((x) => {
+      const d = toDate(x.sale_date) ?? toDate(x.saleDate) ?? toDate(x.createdAt);
+      return d && d <= new Date(dateTo + "T23:59:59");
+    });
+    return s;
+  }, [sales, dateFrom, dateTo]);
+
   // Inventory pagination
   const invTotalPages = Math.max(1, Math.ceil(filteredInventory.length / INV_PER_PAGE));
   const safeInvPage = Math.min(invPage, invTotalPages);
@@ -172,19 +186,6 @@ export default function DeviceChickInventoryPage() {
   // Reset pages on filter change
   useEffect(() => { setInvPage(1); }, [filteredInventory]);
   useEffect(() => { setSalesPage(1); }, [filteredSales]);
-
-  const filteredSales = useMemo(() => {
-    let s = [...sales];
-    if (dateFrom) s = s.filter((x) => {
-      const d = toDate(x.sale_date) ?? toDate(x.saleDate) ?? toDate(x.createdAt);
-      return d && d >= new Date(dateFrom);
-    });
-    if (dateTo) s = s.filter((x) => {
-      const d = toDate(x.sale_date) ?? toDate(x.saleDate) ?? toDate(x.createdAt);
-      return d && d <= new Date(dateTo + "T23:59:59");
-    });
-    return s;
-  }, [sales, dateFrom, dateTo]);
 
   const totalRevenue = useMemo(
     () => filteredSales.reduce((s, x) => s + (x.total_amount || 0), 0),
