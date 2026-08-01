@@ -189,6 +189,9 @@ export default function EggDetectorScannerPage() {
 
   // pendingScanData holds the inference result waiting for user to Accept
   const [pendingScanData, setPendingScanData] = useState(null);
+  // The class the operator confirmed — seeded from the model's own call, so
+  // Accept without touching anything still records an explicit agreement.
+  const [correctedClass, setCorrectedClass] = useState(null);
 
   const [isInferring, setIsInferring] = useState(false);
   const [inferenceResult, setInferenceResult] = useState(null);
@@ -386,8 +389,15 @@ export default function EggDetectorScannerPage() {
 
   /* ── save scan to Firestore ─────────────────────────────────────────── */
 
-  const saveScanToFirebase = useCallback(async (scanData) => {
+  const saveScanToFirebase = useCallback(async (scanData, confirmedClass) => {
     const { layer1_class, layer2_class, layer1_confidence, layer2_confidence, annotation_label, imageDataUrl } = scanData;
+
+    // What the model said, versus what the operator confirmed. Storing both is
+    // what makes accuracy measurable; the confirmed class is the one that counts.
+    const predictedClass = statusKey(layer1_class);
+    const finalClass = confirmedClass || predictedClass;
+    const wasCorrected = finalClass !== predictedClass;
+
     setIsSaving(true);
     try {
       // Save scan record
@@ -401,24 +411,28 @@ export default function EggDetectorScannerPage() {
         layer2_confidence: layer2_confidence || null,
         annotation_label: annotation_label || null,
         imageDataUrl: imageDataUrl || null,
-        status: statusLabel(layer1_class),
+        predictedClass,
+        finalClass,
+        wasCorrected,
+        status: statusLabel(finalClass),
         scanType: "embryo_development",
       });
 
-      // Auto-deduct inventory on dead or infertile
-      if (selectedBatch && (layer1_class === "dead" || layer1_class === "infertile")) {
-        const field = layer1_class === "dead" ? "deadEggs" : "infertileEggs";
+      // Deduct against the CONFIRMED class, not the model's guess — otherwise a
+      // corrected scan still moves the batch counts the wrong way.
+      if (selectedBatch && (finalClass === "dead" || finalClass === "infertile")) {
+        const field = finalClass === "dead" ? "deadEggs" : "infertileEggs";
         await updateDoc(doc(firestore, "egg_batches", selectedBatch), {
           [field]: increment(1),
           lastCandlingDate: new Date(),
-          lastCandlingResult: statusLabel(layer1_class),
+          lastCandlingResult: statusLabel(finalClass),
           candlingRound,
           updatedAt: serverTimestamp(),
         });
       } else if (selectedBatch) {
         await updateDoc(doc(firestore, "egg_batches", selectedBatch), {
           lastCandlingDate: new Date(),
-          lastCandlingResult: statusLabel(layer1_class),
+          lastCandlingResult: statusLabel(finalClass),
           candlingRound,
           updatedAt: serverTimestamp(),
         }).catch(() => {});
@@ -476,6 +490,8 @@ export default function EggDetectorScannerPage() {
         annotation_label: data.annotation_label,
         imageDataUrl,
       });
+      // Pre-select the model's answer so Accept means "I agree", not "I skipped".
+      setCorrectedClass(statusKey(data.layer1_class));
 
       // Schedule next candling notification
       const batchData = availableBatches.find((b) => b.id === selectedBatch);
@@ -540,6 +556,7 @@ export default function EggDetectorScannerPage() {
     setSaveError("");
     setScannerUnavailable(false);
     setPendingScanData(null);
+    setCorrectedClass(null);
     setActiveTab("scan");
   }, []);
 
@@ -548,13 +565,14 @@ export default function EggDetectorScannerPage() {
     if (!pendingScanData) { handleReset(); setActiveTab("scan"); return; }
     setIsSaving(true);
     try {
-      await saveScanToFirebase(pendingScanData);
+      await saveScanToFirebase(pendingScanData, correctedClass);
     } finally {
       setPendingScanData(null);
+      setCorrectedClass(null);
       handleReset();
       setActiveTab("scan");
     }
-  }, [pendingScanData, saveScanToFirebase, handleReset]);
+  }, [pendingScanData, correctedClass, saveScanToFirebase, handleReset]);
 
   useEffect(() => () => { stopCamera(); }, [stopCamera]);
 
@@ -912,6 +930,51 @@ export default function EggDetectorScannerPage() {
                       </Accordion>
                     )}
 
+                    {/* ── Verify the model's call ──────────────────────────
+                        Until now the only option was Accept, so a wrong
+                        prediction could never be corrected — and with no ground
+                        truth recorded, model accuracy was unmeasurable. */}
+                    <div className="rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                        Confirm the result
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        If the model got it wrong, pick the correct result. Your choice is what gets
+                        saved and counted, and it lets the app measure how accurate the model really is.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {["fertile", "dead", "infertile"].map((cls) => {
+                          const isPredicted = statusKey(inferenceResult.layer1_class) === cls;
+                          const isChosen = correctedClass === cls;
+                          return (
+                            <button
+                              key={cls}
+                              type="button"
+                              onClick={() => setCorrectedClass(cls)}
+                              className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-semibold ring-1 transition ${
+                                isChosen
+                                  ? "bg-[#004a87] text-white ring-[#004a87]"
+                                  : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-100"
+                              }`}
+                            >
+                              {statusLabel(cls)}
+                              {isPredicted && (
+                                <span className={`text-[9px] font-bold ${isChosen ? "text-sky-200" : "text-slate-400"}`}>
+                                  AI
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {correctedClass && statusKey(inferenceResult.layer1_class) !== correctedClass && (
+                        <p className="mt-2 text-[11px] font-medium text-amber-700">
+                          Recorded as a correction — the model said{" "}
+                          {statusLabel(inferenceResult.layer1_class)}.
+                        </p>
+                      )}
+                    </div>
+
                     {/* action row */}
                     <div className="flex gap-2">
                       <button
@@ -926,7 +989,7 @@ export default function EggDetectorScannerPage() {
                         className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700 transition disabled:opacity-60"
                       >
                         {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5" />}
-                        {isSaving ? "Saving…" : "Accept"}
+                        {isSaving ? "Saving…" : correctedClass && statusKey(inferenceResult.layer1_class) !== correctedClass ? "Save Correction" : "Accept"}
                       </button>
                     </div>
                   </>
