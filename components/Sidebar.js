@@ -18,8 +18,10 @@ import {
   ScanLine,
   Settings,
   Settings2,
+  TrendingUp,
   User,
   X,
+  Zap,
 } from "lucide-react";
 
 export default function Sidebar({ mobileOpen = false, onMobileClose = null }) {
@@ -42,6 +44,8 @@ export default function Sidebar({ mobileOpen = false, onMobileClose = null }) {
   const isEggBatches = pathname === "/egg-batches";
   const isBatchHistory = pathname === "/batch-history";
   const isChickInventory = pathname === "/chick-inventory";
+  const isHatchAnalysis = pathname === "/hatch-analysis";
+  const isPowerConsumption = pathname === "/power-consumption";
   const isProfile = pathname === "/profile";
 
   const closeMobile = useCallback(() => {
@@ -220,6 +224,34 @@ export default function Sidebar({ mobileOpen = false, onMobileClose = null }) {
               >
                 <Package className="h-3.5 w-3.5" />
                 <span>Chick Inventory</span>
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/hatch-analysis"
+                className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-1.5 text-left text-xs font-medium transition ${
+                  isHatchAnalysis
+                    ? "bg-sky-600 text-white shadow-sm"
+                    : "text-slate-600 hover:bg-slate-50"
+                }`}
+                onClick={closeMobile}
+              >
+                <TrendingUp className="h-3.5 w-3.5" />
+                <span>Hatch Analysis</span>
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/power-consumption"
+                className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-1.5 text-left text-xs font-medium transition ${
+                  isPowerConsumption
+                    ? "bg-sky-600 text-white shadow-sm"
+                    : "text-slate-600 hover:bg-slate-50"
+                }`}
+                onClick={closeMobile}
+              >
+                <Zap className="h-3.5 w-3.5" />
+                <span>Power Consumption</span>
               </Link>
             </li>
           </ul>

@@ -1,12 +1,17 @@
 // @ts-nocheck
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, firestore } from "@/lib/firebase";
 import { useIncubatorDevices } from "@/lib/useIncubatorDevices";
+import { useNowTick, isDeviceOnline } from "@/lib/useNowTick";
+import { useDeviceEnergy } from "@/lib/useDeviceEnergy";
+import { usePowerSettings } from "@/lib/usePowerSettings";
+import { liveDraw, DEFAULT_CURRENCY } from "@/lib/powerEstimate.mjs";
+import { ACTUATOR_LABELS } from "@/lib/batchReport.mjs";
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 import Link from "next/link";
@@ -28,6 +33,7 @@ import {
   Package,
   ArchiveRestore,
   AlertTriangle,
+  Zap,
 } from "lucide-react";
 
 export default function DevicePage() {
@@ -65,11 +71,25 @@ export default function DevicePage() {
     authorized ? [deviceId] : []
   );
 
-  const live = devices[deviceId] || {};
-  const lastSeenMs = typeof live?.lastSeen === "number" ? live.lastSeen : 0;
-  const isOnline = live?.mode === "online" && (lastSeenMs === 0 || (Date.now() - lastSeenMs) < 15000);
+  const live = useMemo(() => devices[deviceId] || {}, [devices, deviceId]);
+
+  // Ticking clock rather than Date.now() at render time: RTDB fires no event
+  // when a device goes silent, so without this the Offline badge only appears
+  // if something else happens to re-render the page.
+  const now = useNowTick(5000);
+  const isOnline = isDeviceOnline(live, now);
+
   const tempValid = typeof live?.tempC === "number" && live.tempC !== -999;
   const humValid = typeof live?.humidity === "number" && live.humidity !== -999;
+
+  const { settings: powerSettings } = usePowerSettings();
+  const { energy } = useDeviceEnergy(deviceId, authorized === true);
+
+  // Exact, unlike the cumulative estimate: just the wattage of what is on now.
+  const draw = useMemo(
+    () => liveDraw(live, powerSettings.ratings, isOnline),
+    [live, powerSettings, isOnline]
+  );
 
   if (authorized === null) {
     return (
@@ -104,6 +124,7 @@ export default function DevicePage() {
     { href: `/devices/${deviceId}/history`, label: "History", icon: History },
     { href: `/devices/${deviceId}/batch-history`, label: "Batch History", icon: ArchiveRestore },
     { href: `/devices/${deviceId}/chick-inventory`, label: "Chick Inventory", icon: Package },
+    { href: `/devices/${deviceId}/power`, label: "Power", icon: Zap },
     { href: `/devices/${deviceId}/settings`, label: "Settings", icon: Settings },
   ];
 
@@ -222,8 +243,56 @@ export default function DevicePage() {
             </div>
           </div>
 
+          {/* Power — live draw is exact; the cumulative figure is an estimate */}
+          <Link
+            href={`/devices/${deviceId}/power`}
+            className="rounded-2xl bg-white px-5 py-5 shadow-sm ring-1 ring-slate-100 transition hover:ring-sky-200"
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                <Zap className="h-3.5 w-3.5 text-amber-400" />
+                Power
+              </h2>
+              <span className="text-[11px] font-semibold text-[#004a87]">Details →</span>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Now</p>
+                <p className={`mt-1 text-lg font-bold ${draw.watts > 0 ? "text-amber-600" : "text-slate-400"}`}>
+                  {isOnline ? `${draw.watts} W` : "—"}
+                </p>
+              </div>
+              <div className="rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Running</p>
+                <p className="mt-1 text-[11px] font-semibold leading-tight text-slate-600">
+                  {!isOnline
+                    ? "Offline"
+                    : draw.active.length
+                      ? draw.active.map((a) => ACTUATOR_LABELS[a.key] ?? a.key).join(", ")
+                      : "All idle"}
+                </p>
+              </div>
+              <div className="rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Logged</p>
+                <p className="mt-1 text-lg font-bold text-slate-700">{energy.totalKwh ?? 0} kWh</p>
+              </div>
+              <div className="rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Cost</p>
+                <p className="mt-1 text-lg font-bold text-slate-700">
+                  {DEFAULT_CURRENCY}{energy.totalCost ?? 0}
+                </p>
+              </div>
+            </div>
+
+            <p className="mt-3 text-[10px] leading-relaxed text-slate-400">
+              Current draw is exact. The logged total is an estimate — actuator runtime is only
+              recorded while the control page is open, so the real total is higher.
+            </p>
+          </Link>
+
           {/* Navigation tiles */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {navLinks.map(({ href, label, icon: Icon }) => (
               <Link
                 key={href}
