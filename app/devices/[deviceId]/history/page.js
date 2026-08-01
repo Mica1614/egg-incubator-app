@@ -33,11 +33,14 @@ import {
   Timer,
   FileDown,
   FileSpreadsheet,
+  Package,
+  ClipboardList,
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { LOG_INTERVAL_KEY } from "@/lib/useDeviceHistoryLogger";
+import { resolveWindow } from "@/lib/batchReport.mjs";
 import {
   LineChart,
   Line,
@@ -182,6 +185,8 @@ export default function DeviceHistoryPage() {
     XLSX.writeFile(wb, `Sensor_History_${deviceId}_${new Date().toISOString().split("T")[0]}.xlsx`);
   };
 
+  const [batches, setBatches] = useState([]);
+  const [selectedBatchId, setSelectedBatchId] = useState("");
   const [sensorRows, setSensorRows] = useState([]);
   const [activityRows, setActivityRows] = useState([]);
   const [sensorPage, setSensorPage] = useState(1);
@@ -200,13 +205,16 @@ export default function DeviceHistoryPage() {
     return () => unsub();
   }, [deviceId, router]);
 
-  // Fetch data whenever range or auth changes
-  const fetchData = async () => {
+  // Fetch data whenever range or auth changes.
+  // Accepts an explicit range so callers that also setRange() do not race the
+  // state update — picking a batch needs to fetch its window immediately.
+  const fetchData = async (overrideRange) => {
     if (!authorized || !deviceId) return;
+    const activeRange = overrideRange ?? range;
     setLoading(true);
     try {
-      const fromTs = Timestamp.fromDate(new Date(range.from));
-      const toTs   = Timestamp.fromDate(new Date(range.to));
+      const fromTs = Timestamp.fromDate(new Date(activeRange.from));
+      const toTs   = Timestamp.fromDate(new Date(activeRange.to));
 
       const [sSnap, aSnap] = await Promise.all([
         getDocs(query(
@@ -238,6 +246,52 @@ export default function DeviceHistoryPage() {
     if (authorized) fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorized]);
+
+  // Batches for this device, for the "filter by batch" shortcut.
+  useEffect(() => {
+    if (!authorized || !deviceId) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const snap = await getDocs(
+          query(collection(firestore, "egg_batches"), where("deviceId", "==", deviceId))
+        );
+        if (cancelled) return;
+        const docs = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .map((b) => ({ ...b, _window: resolveWindow(b, new Date()) }))
+          .filter((b) => b._window.start)
+          .sort((a, b) => b._window.start - a._window.start);
+        setBatches(docs);
+      } catch (e) {
+        console.warn("[HistoryPage] batch list failed:", e.message);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [authorized, deviceId]);
+
+  const selectedBatch = useMemo(
+    () => batches.find((b) => b.id === selectedBatchId) ?? null,
+    [batches, selectedBatchId]
+  );
+
+  /** Snap the range to a batch's incubation window and refetch immediately. */
+  const handleBatchSelect = (batchDocId) => {
+    setSelectedBatchId(batchDocId);
+    if (!batchDocId) return;
+
+    const batch = batches.find((b) => b.id === batchDocId);
+    if (!batch?._window?.start) return;
+
+    const next = {
+      from: toLocalDatetimeValue(batch._window.start),
+      to: toLocalDatetimeValue(batch._window.end),
+    };
+    setRange(next);
+    fetchData(next);
+  };
 
   // Chart data
   const chartData = useMemo(() => {
@@ -328,6 +382,49 @@ export default function DeviceHistoryPage() {
             </div>
           </div>
 
+          {/* ── Filter by batch ──────────────────────────────────────── */}
+          <div className="rounded-2xl bg-white px-5 py-4 shadow-sm ring-1 ring-slate-100">
+            <div className="flex items-center gap-2 mb-3">
+              <Package className="h-4 w-4 text-slate-400" />
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Filter by Batch</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <select
+                value={selectedBatchId}
+                onChange={(e) => handleBatchSelect(e.target.value)}
+                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#004a87]/30"
+              >
+                <option value="">All data (use the range below)</option>
+                {batches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.batchId || b.id} — {b.eggType || "?"} ({b._window.start.toLocaleDateString()})
+                  </option>
+                ))}
+              </select>
+
+              {selectedBatch ? (
+                <>
+                  <p className="text-[10px] text-slate-400">
+                    Range snapped to this batch&apos;s incubation window.
+                  </p>
+                  <Link
+                    href={`/devices/${deviceId}/batches/${selectedBatch.id}/report`}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-sky-50 px-3 py-2 text-[11px] font-semibold text-[#004a87] ring-1 ring-sky-100 transition hover:bg-sky-100"
+                  >
+                    <ClipboardList className="h-3.5 w-3.5" />
+                    Full batch report
+                  </Link>
+                </>
+              ) : (
+                <p className="text-[10px] text-slate-400">
+                  {batches.length === 0
+                    ? "No batches recorded for this device yet."
+                    : "Pick a batch to scope the readings below to its incubation window."}
+                </p>
+              )}
+            </div>
+          </div>
+
           {/* ── Date / time range picker ─────────────────────────────── */}
           <div className="rounded-2xl bg-white px-5 py-4 shadow-sm ring-1 ring-slate-100">
             <div className="flex items-center gap-2 mb-3">
@@ -340,7 +437,7 @@ export default function DeviceHistoryPage() {
                 <input
                   type="datetime-local"
                   value={range.from}
-                  onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))}
+                  onChange={(e) => { setSelectedBatchId(""); setRange((r) => ({ ...r, from: e.target.value })); }}
                   className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#004a87]/30"
                 />
               </div>
@@ -349,7 +446,7 @@ export default function DeviceHistoryPage() {
                 <input
                   type="datetime-local"
                   value={range.to}
-                  onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))}
+                  onChange={(e) => { setSelectedBatchId(""); setRange((r) => ({ ...r, to: e.target.value })); }}
                   className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#004a87]/30"
                 />
               </div>
@@ -367,6 +464,7 @@ export default function DeviceHistoryPage() {
                     onClick={() => {
                       const to = new Date();
                       const from = new Date(to.getTime() - ms);
+                      setSelectedBatchId("");
                       setRange({ from: toLocalDatetimeValue(from), to: toLocalDatetimeValue(to) });
                     }}
                     className="rounded-lg bg-slate-100 px-3 py-2 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-200"
@@ -376,7 +474,7 @@ export default function DeviceHistoryPage() {
                 ))}
                 <button
                   type="button"
-                  onClick={fetchData}
+                  onClick={() => fetchData()}
                   disabled={loading}
                   className="inline-flex items-center gap-1.5 rounded-xl bg-[#004a87] px-4 py-2 text-[11px] font-semibold text-white transition hover:bg-[#003d72] disabled:opacity-50"
                 >
