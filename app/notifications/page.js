@@ -7,6 +7,7 @@ import TopBar from "@/components/TopBar";
 import { auth, firestore } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useGlobalMute } from "@/lib/useGlobalMute";
+import { groupNotifications } from "@/lib/notificationPolicy.mjs";
 import {
   collection,
   deleteDoc,
@@ -19,6 +20,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import {
+  Layers,
   LogIn,
   Trash2,
   Droplet,
@@ -38,6 +40,8 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState([]);
   const [error, setError] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  // Collapse repeats of the same alert for the same device into a single row.
+  const [grouped, setGrouped] = useState(false);
   const { isMuted, toggle: toggleMute } = useGlobalMute();
 
   useEffect(() => {
@@ -82,6 +86,20 @@ export default function NotificationsPage() {
   const unreadCount = useMemo(() => {
     return notifications.reduce((acc, item) => (item?.read ? acc : acc + 1), 0);
   }, [notifications]);
+
+  /**
+   * In grouped mode each row is the most recent notification of its
+   * (device, type) pair, carrying a repeat count. Deleting a grouped row still
+   * deletes only that one document — the count is a display aid, not a batch
+   * selection, so nothing is destroyed that the user cannot see.
+   */
+  const visibleNotifications = useMemo(() => {
+    if (!grouped) return notifications;
+    return groupNotifications(notifications).map((group) => ({
+      ...group.latest,
+      _repeatCount: group.count,
+    }));
+  }, [notifications, grouped]);
 
   const formatTimestamp = (createdAt) => {
     try {
@@ -197,11 +215,27 @@ export default function NotificationsPage() {
                   All Notifications
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  {uid ? `${notifications.length} total • ${unreadCount} unread` : "Sign in to view notifications."}
+                  {uid
+                    ? `${notifications.length} total • ${unreadCount} unread${
+                        grouped ? ` • showing ${visibleNotifications.length} grouped` : ""
+                      }`
+                    : "Sign in to view notifications."}
                 </p>
               </div>
 
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setGrouped((g) => !g)}
+                  disabled={!uid || notifications.length === 0}
+                  className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-semibold shadow-sm transition disabled:opacity-40 ${
+                    grouped ? "bg-sky-600 text-white hover:bg-sky-700" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                  title="Collapse repeats of the same alert for the same device into one row"
+                >
+                  <Layers className="h-4 w-4" />
+                  {grouped ? "Grouped" : "Group"}
+                </button>
                 <button
                   type="button"
                   onClick={markAllAsRead}
@@ -256,11 +290,12 @@ export default function NotificationsPage() {
               </div>
             ) : (
               <div className="mt-5 max-h-[600px] overflow-y-auto rounded-2xl ring-1 ring-slate-200">
-                {notifications.map((item) => {
+                {visibleNotifications.map((item) => {
                   const IconComponent = getIconComponent(item?.icon);
                   const iconColor = item?.iconColor || "text-slate-500";
                   const isRead = Boolean(item?.read);
-                  
+
+                  const repeatCount = item?._repeatCount ?? 1;
                   const titleText = item?.title || item?.text || "Notification";
                   const messageText = item?.message || "";
                   const timestamp = formatTimestamp(item?.createdAt);
@@ -281,6 +316,14 @@ export default function NotificationsPage() {
                             isRead ? "font-normal" : "font-semibold"
                           }`}>
                             {titleText}
+                            {repeatCount > 1 && (
+                              <span
+                                className="ml-2 inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600"
+                                title={`${repeatCount} notifications of this type for this device`}
+                              >
+                                ×{repeatCount}
+                              </span>
+                            )}
                           </p>
                           {!isRead && (
                             <div className="h-2 w-2 shrink-0 rounded-full bg-sky-500 mt-2" />
