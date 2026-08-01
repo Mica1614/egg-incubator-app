@@ -3,8 +3,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Sidebar from "@/components/Sidebar";
-import { Info, Search, Box, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Check, Loader2, Trash2, FileDown, FileSpreadsheet, Monitor } from "lucide-react";
+import { Info, Box, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Check, Loader2, Trash2, FileDown, FileSpreadsheet, Monitor, ClipboardList } from "lucide-react";
+import Link from "next/link";
 import TopBar from "@/components/TopBar";
+import BatchFilterBar from "@/components/BatchFilterBar";
+import { filterBatches, EMPTY_FILTERS } from "@/lib/batchFilters.mjs";
 import { firestore } from "@/lib/firebase";
 import { collection, onSnapshot, orderBy, query, doc, updateDoc, serverTimestamp, deleteDoc, setDoc } from "firebase/firestore";
 import jsPDF from "jspdf";
@@ -165,13 +168,34 @@ function BatchRow({ batch, formatShortDate }) {
         <td className="py-3 pr-4 text-xs text-slate-500 whitespace-nowrap">{batch._startDate ? formatShortDate(batch._startDate) : "—"}</td>
         <td className="py-3 pr-4 text-xs text-slate-500 whitespace-nowrap">{batch?._derived?.hatchingDate ? formatShortDate(batch._derived.hatchingDate) : "—"}</td>
         <td className="py-3 pl-0">
-          <button
-            onClick={() => setIsDeleteConfirmOpen(true)}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50 text-rose-500 ring-1 ring-rose-100 hover:bg-rose-100 transition"
-            title="Delete"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            {batch?.deviceId ? (
+              <Link
+                href={`/devices/${batch.deviceId}/batches/${batch.id}/report`}
+                className="inline-flex h-7 items-center gap-1 rounded-lg bg-sky-50 px-2 text-[11px] font-semibold text-[#004a87] ring-1 ring-sky-100 transition hover:bg-sky-100"
+                title="View full batch report"
+              >
+                <ClipboardList className="h-3.5 w-3.5" />
+                Report
+              </Link>
+            ) : (
+              /* Legacy rows predate per-device batches and have no device to report against. */
+              <span
+                className="inline-flex h-7 cursor-not-allowed items-center gap-1 rounded-lg bg-slate-50 px-2 text-[11px] font-semibold text-slate-400 ring-1 ring-slate-100"
+                title="This batch has no linked device, so no report can be generated"
+              >
+                <ClipboardList className="h-3.5 w-3.5" />
+                Report
+              </span>
+            )}
+            <button
+              onClick={() => setIsDeleteConfirmOpen(true)}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50 text-rose-500 ring-1 ring-rose-100 hover:bg-rose-100 transition"
+              title="Delete"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </td>
       </tr>
 
@@ -208,7 +232,7 @@ export default function BatchHistoryPage() {
   const [batches, setBatches] = useState([]);
   const [isLoadingBatches, setIsLoadingBatches] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState({ ...EMPTY_FILTERS });
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(6);
 
@@ -218,7 +242,8 @@ export default function BatchHistoryPage() {
     doc.setFontSize(10);
     doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 22);
 
-    const tableData = historyBatches.map((b) => [
+    // Export what the user is looking at, not the whole unfiltered list.
+    const tableData = filteredBatches.map((b) => [
       b.batchId || "-",
       b.eggType || "-",
       b.totalEggs || 0,
@@ -238,7 +263,7 @@ export default function BatchHistoryPage() {
   };
 
   const exportToExcel = () => {
-    const data = historyBatches.map((b) => ({
+    const data = filteredBatches.map((b) => ({
       "Batch ID": b.batchId || "-",
       "Egg Type": b.eggType || "-",
       "Total Eggs": b.totalEggs || 0,
@@ -330,26 +355,15 @@ export default function BatchHistoryPage() {
     };
   }, [historyBatches]);
 
-  const filteredBatches = useMemo(() => {
-    const q = String(search || "").trim().toLowerCase();
-    if (!q) return historyBatches;
+  const filteredBatches = useMemo(
+    () => filterBatches(historyBatches, filters),
+    [historyBatches, filters]
+  );
 
-    return historyBatches.filter((batch) => {
-      const id = String(batch?.batchId || "").toLowerCase();
-      const type = String(batch?.eggType || "").toLowerCase();
-      const start = batch?._startDate ? formatShortDate(batch._startDate).toLowerCase() : "";
-      const hatch = batch?._derived?.hatchingDate
-        ? formatShortDate(batch._derived.hatchingDate).toLowerCase()
-        : "";
-      const status = String(batch?.status || "").toLowerCase();
-
-      return id.includes(q) || type.includes(q) || start.includes(q) || hatch.includes(q) || status.includes(q);
-    });
-  }, [historyBatches, search]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, perPage]);
+  // Reset paging in the handlers rather than an effect — an effect would cause
+  // a cascading render, and these are the only two ways the page can change.
+  const handleFiltersChange = (next) => { setFilters(next); setPage(1); };
+  const handlePerPageChange = (next) => { setPerPage(next); setPage(1); };
 
   const totalPages = Math.max(1, Math.ceil(filteredBatches.length / perPage));
   const safePage = Math.min(Math.max(1, page), totalPages);
@@ -375,7 +389,7 @@ export default function BatchHistoryPage() {
               <div className="flex gap-2">
                 <button
                   onClick={exportToPDF}
-                  disabled={historyBatches.length === 0}
+                  disabled={filteredBatches.length === 0}
                   className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:opacity-50"
                 >
                   <FileDown className="h-4 w-4" />
@@ -383,7 +397,7 @@ export default function BatchHistoryPage() {
                 </button>
                 <button
                   onClick={exportToExcel}
-                  disabled={historyBatches.length === 0}
+                  disabled={filteredBatches.length === 0}
                   className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
                 >
                   <FileSpreadsheet className="h-4 w-4" />
@@ -415,21 +429,18 @@ export default function BatchHistoryPage() {
             </article>
           </section>
 
+          <BatchFilterBar
+            filters={filters}
+            onChange={handleFiltersChange}
+            resultCount={filteredBatches.length}
+            totalCount={historyBatches.length}
+          />
+
           <section className="rounded-3xl bg-white px-6 py-6 shadow-sm ring-1 ring-slate-100">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold tracking-tight text-slate-900">Completed Batches</p>
                 <p className="mt-1 text-[11px] text-slate-500">Search and review previously finished batches.</p>
-              </div>
-
-              <div className="relative w-full sm:w-80">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search by batch number, date, egg type..."
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-10 py-2.5 text-sm text-slate-900 outline-none transition focus:border-sky-300/90 focus:ring-4 focus:ring-sky-500/10"
-                />
               </div>
             </div>
 
@@ -453,7 +464,7 @@ export default function BatchHistoryPage() {
             ) : filteredBatches.length === 0 ? (
               <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-center">
                 <p className="text-xs font-medium text-slate-500">No matching results.</p>
-                <p className="mt-1 text-[11px] text-slate-400">Try a different search term.</p>
+                <p className="mt-1 text-[11px] text-slate-400">Try adjusting or resetting the filters.</p>
               </div>
             ) : (
               <div className="mt-5 space-y-4">
@@ -529,7 +540,7 @@ export default function BatchHistoryPage() {
                     <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Per page</label>
                     <select
                       value={perPage}
-                      onChange={(e) => setPerPage(Number(e.target.value))}
+                      onChange={(e) => handlePerPageChange(Number(e.target.value))}
                       className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none transition focus:border-sky-300/90 focus:ring-4 focus:ring-sky-500/10"
                     >
                       <option value={3}>3</option>

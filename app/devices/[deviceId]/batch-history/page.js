@@ -18,9 +18,11 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import {
   ChevronLeft, AlertTriangle, Loader2, Check, Trash2,
-  Search, ArchiveRestore, FileDown, FileSpreadsheet,
+  ArchiveRestore, FileDown, FileSpreadsheet, ClipboardList,
   ChevronsLeft, ChevronsRight, ChevronRight,
 } from "lucide-react";
+import BatchFilterBar from "@/components/BatchFilterBar";
+import { filterBatches, EMPTY_FILTERS } from "@/lib/batchFilters.mjs";
 
 const formatShortDate = (date) => {
   try {
@@ -38,7 +40,7 @@ const incubationDaysForType = (eggType) => {
   return 21;
 };
 
-function BatchRow({ batch }) {
+function BatchRow({ batch, deviceId }) {
   const autoHatched = Math.max(0, (batch?.totalEggs || 0) - (batch?.deadEggs || 0) - (batch?.infertileEggs || 0));
   const [hatchedValue, setHatchedValue] = useState(
     batch?.hatchedEggs != null ? String(batch.hatchedEggs) : String(autoHatched)
@@ -119,13 +121,23 @@ function BatchRow({ batch }) {
         <td className="py-3 pr-4 text-xs text-slate-500 whitespace-nowrap">{batch._startDate ? formatShortDate(batch._startDate) : "—"}</td>
         <td className="py-3 pr-4 text-xs text-slate-500 whitespace-nowrap">{batch?._hatchDate ? formatShortDate(batch._hatchDate) : "—"}</td>
         <td className="py-3 pl-0">
-          <button
-            onClick={() => setIsDeleteConfirmOpen(true)}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50 text-rose-500 ring-1 ring-rose-100 hover:bg-rose-100 transition"
-            title="Delete"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <Link
+              href={`/devices/${deviceId}/batches/${batch.id}/report`}
+              className="inline-flex h-7 items-center gap-1 rounded-lg bg-sky-50 px-2 text-[11px] font-semibold text-[#004a87] ring-1 ring-sky-100 transition hover:bg-sky-100"
+              title="View full batch report"
+            >
+              <ClipboardList className="h-3.5 w-3.5" />
+              Report
+            </Link>
+            <button
+              onClick={() => setIsDeleteConfirmOpen(true)}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50 text-rose-500 ring-1 ring-rose-100 hover:bg-rose-100 transition"
+              title="Delete"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </td>
       </tr>
 
@@ -163,7 +175,7 @@ export default function DeviceBatchHistoryPage() {
   const [batches, setBatches] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState({ ...EMPTY_FILTERS });
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(6);
 
@@ -201,16 +213,12 @@ export default function DeviceBatchHistoryPage() {
     return { totalBatches, totalChicks, avgHatchRate };
   }, [batches]);
 
-  const filteredBatches = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return batches.filter((b) =>
-      String(b.batchId || "").toLowerCase().includes(q) ||
-      String(b.eggType || "").toLowerCase().includes(q) ||
-      String(b.status || "").toLowerCase().includes(q)
-    );
-  }, [batches, search]);
+  const filteredBatches = useMemo(() => filterBatches(batches, filters), [batches, filters]);
 
-  useEffect(() => { setPage(1); }, [search, perPage]);
+  // Reset paging in the handlers rather than an effect — an effect would cause
+  // a cascading render, and these are the only two ways the page can change.
+  const handleFiltersChange = (next) => { setFilters(next); setPage(1); };
+  const handlePerPageChange = (next) => { setPerPage(next); setPage(1); };
 
   const totalPages = Math.max(1, Math.ceil(filteredBatches.length / perPage));
   const safePage = Math.min(Math.max(1, page), totalPages);
@@ -311,20 +319,18 @@ export default function DeviceBatchHistoryPage() {
             </article>
           </section>
 
+          <BatchFilterBar
+            filters={filters}
+            onChange={handleFiltersChange}
+            resultCount={filteredBatches.length}
+            totalCount={batches.length}
+          />
+
           <section className="rounded-3xl bg-white px-6 py-6 shadow-sm ring-1 ring-slate-100">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold tracking-tight text-slate-900">All Batches</p>
                 <p className="mt-1 text-[11px] text-slate-500">All batches for {nickname || deviceId}.</p>
-              </div>
-              <div className="relative w-full sm:w-80">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search by batch ID, egg type, status…"
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-10 py-2.5 text-sm outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-500/10"
-                />
               </div>
             </div>
 
@@ -362,7 +368,7 @@ export default function DeviceBatchHistoryPage() {
                     </thead>
                     <tbody>
                       {pagedBatches.map((batch) => (
-                        <BatchRow key={batch.id} batch={batch} />
+                        <BatchRow key={batch.id} batch={batch} deviceId={deviceId} />
                       ))}
                     </tbody>
                   </table>
@@ -389,7 +395,7 @@ export default function DeviceBatchHistoryPage() {
                   </div>
                   <div className="flex items-center gap-3">
                     <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Per page</label>
-                    <select value={perPage} onChange={(e) => setPerPage(Number(e.target.value))} className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-500/10">
+                    <select value={perPage} onChange={(e) => handlePerPageChange(Number(e.target.value))} className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-sky-300 focus:ring-4 focus:ring-sky-500/10">
                       <option value={3}>3</option>
                       <option value={6}>6</option>
                       <option value={9}>9</option>
