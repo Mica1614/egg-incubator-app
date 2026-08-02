@@ -24,6 +24,7 @@ import { formatDuration, ACTUATOR_LABELS } from "@/lib/batchReport.mjs";
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 import BreadcrumbNav from "@/components/BreadcrumbNav";
+import NumberField from "@/components/NumberField";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
@@ -271,16 +272,21 @@ export default function DevicePowerPage() {
                         <tr key={row.key} className="border-b border-slate-100 last:border-0">
                           <td className="py-2.5 px-3 text-xs font-semibold text-slate-800">{row.label}</td>
                           <td className="py-2.5 px-3">
-                            <div className="flex items-center gap-1.5">
-                              <input
-                                type="number"
-                                min="0"
-                                value={settings.ratings[row.key] ?? ""}
-                                onChange={(e) => setRating(row.key, e.target.value)}
-                                className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-500/10"
-                              />
-                              <span className="text-[10px] text-slate-400">W</span>
-                            </div>
+                            <NumberField
+                              value={settings.ratings[row.key]}
+                              onChange={(watts) => setRating(row.key, watts)}
+                              suffix="W"
+                              aria-label={`${row.label} rated watts`}
+                              className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-500/10"
+                            />
+                            {/* A negative or unusable entry is ignored by the
+                                estimator, so say which figure is actually in use
+                                rather than letting the two diverge silently. */}
+                            {Number(settings.ratings[row.key]) !== row.watts && (
+                              <p className="mt-1 text-[10px] font-medium text-amber-600">
+                                Using {row.watts} W
+                              </p>
+                            )}
                           </td>
                           <td className="py-2.5 px-3 text-xs text-slate-600">{formatDuration(row.runtimeMs)}</td>
                           <td className="py-2.5 px-3 text-xs text-slate-600">{row.cycles}</td>
@@ -298,13 +304,10 @@ export default function DevicePowerPage() {
                   <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400" htmlFor="tariff">
                     Electricity rate ({DEFAULT_CURRENCY} per kWh)
                   </label>
-                  <input
+                  <NumberField
                     id="tariff"
-                    type="number"
-                    min="0"
-                    step="0.5"
                     value={settings.tariff}
-                    onChange={(e) => update({ tariff: Number(e.target.value) })}
+                    onChange={(tariff) => update({ tariff })}
                     className="w-28 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-500/10"
                   />
                   <p className="text-[11px] text-slate-400">Shared with every other device and report.</p>
