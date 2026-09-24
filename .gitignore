@@ -2,3 +2,5 @@ node_modules/
 .next/
 .env.local
 prompt.md
+.vercel
+.env*
